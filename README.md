@@ -36,7 +36,7 @@ flowchart TD
     subgraph SemanticRAG ["📚 BI语义知识库 (ChromaDB)"]
         KB1["🗂️ 8张表主外键 Schema"]:::ragNode
         KB2["📏 10大业务口径与防膨胀规范"]:::ragNode
-        KB3["💎 Golden SQL 范式样本"]:::ragNode
+        KB3["💎 SQL 范式样本"]:::ragNode
     end
 
     Planner --> SQLExec["🔍 2. SQL Executor Agent"]:::agentNode
@@ -49,3 +49,48 @@ flowchart TD
     Sandbox -- "✅ 提取真实多维数据表" --> Analyst["📐 3. Python Analyst Agent<br/>(计算环比MoM%与异动贡献度)"]:::agentNode
     Analyst --> Reporter["📝 4. Reporter Agent<br/>(生成结构化商业归因诊断报告)"]:::agentNode
     Reporter --> FinalOut(["📊 输出对比图表与高管诊断报告"]):::userNode
+```
+---
+
+## 三、 分层评测结果 (Stratified Benchmark)
+
+本项目基于Olist数据集构建了包含 **Easy/Medium/Hard** 三个难度等级的 **15道标准评测题**，对比 **Baseline（仅提供基础表字段、无业务字典 RAG）** 与 **本系统 Agent（语义 RAG + 自纠错）** 的执行结果一致率（Execution Accuracy）：
+> 由于该项目运行时调用多个大模型接口，可能会有重跑时出现不一致的情况，个人曾跑过Hard模式下100%准确率，猜测是模型能力导致。
+
+| 难度 | 题目数 | Baseline准确率 | Agent准确率 | 平均执行次数 |
+| :--- | :---: | :---: | :---: | :---: |
+| Easy | 5 | 0.0% | 100.0% | 1.0 |
+| Medium | 5 | 0.0% | 80.0% | 1.4 |
+| Hard | 5 | 0.0% | 60.0% | 1.8 |
+| **Overall (总计)** | **15** | **0.0%** | **80.0%** | **1.4** |
+
+---
+
+## 四、 实战效果预览（2018-07 vs 2018-08 异动归因）
+
+系统自动完成大盘量价、省份及品类多维数据探查后，生成诊断分析报告：
+
+![品类对比可视化](assets/report.png)
+
+*(完整多 Agent 运行日志、SQL 自纠错过程及 15 道评测逐题明细请直接点击查看 `notebooks/01_bi_attribution_agent_v1.ipynb`)*
+
+---
+
+## 五、 如何运行本项目
+
+1. **数据准备**：从 Kaggle 下载 `Brazilian E-Commerce Public Dataset by Olist`（或在 Kaggle 新建 Notebook 直接挂载该数据集）。
+2. **环境配置**：
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **密钥配置**：在 Kaggle Secrets（或本地环境变量）中配置 `LLM_API_KEY`（兼容 DeepSeek / 通义千问等 OpenAI 格式接口）。
+4. **运行顺序**：按顺序执行 `notebooks/01_bi_attribution_agent_v1.ipynb` 中的各个Cell。
+
+---
+
+## 六、 迭代路线图 (Roadmap)
+
+本项目采用敏捷迭代方式持续演进：
+- [x] **v1.0 (Current)**：构建 8 表本地数仓、10 大核心口径语义层、SQL 自纠错引擎、4-Agent 异动归因流与 15 题分层评测集。
+- [ ] **v1.5 (Next)**：引入确定性数学沙盒（**LMDI 对数平均迪氏无残差分解** + 长尾噪音降噪）、**快慢思考路由网关（Gateway Router）**、以及 **Hybrid Judge（正则硬溯源 + LLM-as-a-Judge 审计打回重写闭环）**。
+- [ ] **v2.0 (Future)**：升级为泛化智能商业分析系统，扩展 **分析方法论 Playbook 库**（例如客户复购与留存分析、RFM 分层、趋势诊断）与动态 Python Code Interpreter 沙盒。
