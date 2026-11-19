@@ -5,6 +5,8 @@
 [![ChromaDB](https://img.shields.io/badge/RAG-ChromaDB-green.svg)](https://www.trychroma.com/)
 [![Version](https://img.shields.io/badge/Version-v1.0-brightgreen.svg)]()
 
+> 🚀 **[点击这里在线体验交互式工作台Demo](https://zhengjianhong-136.github.io/bi-data-agent/)**
+
 > **项目定位**：针对传统BI取数链路长、常规Text-to-SQL在复杂数仓语义下准确率低且只能“查数”不能“归因”的痛点，结合商业分析实战经验，基于**LangGraph + BI语义RAG + SQL 自纠错沙盒** 构建端到端智能归因分析Agent，并在 **15道分层评测集（Easy / Medium / Hard）** 上完成量化评估。
 
 ---
