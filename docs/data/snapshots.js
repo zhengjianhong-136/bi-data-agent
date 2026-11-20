@@ -1,12 +1,12 @@
 window.DEMO_SNAPSHOTS = {
   "project_info": {
-    "title": "BI Data Agent",
-    "subtitle": "Olist 8表数仓 · LangGraph",
+    "title": "BI Data Agent v1.5",
+    "subtitle": "异构多模型 · 混合RAG · Hybrid Judge",
     "benchmark": {
-      "overall": "80.0%",
+      "overall": "100.0%",
       "easy": "100%",
-      "medium": "60%",
-      "hard": "80%",
+      "medium": "100%",
+      "hard": "100%",
       "total": 15
     },
     "kb_count": 19,
@@ -20,7 +20,10 @@ window.DEMO_SNAPSHOTS = {
       "【口径7：有效订单差评率 (Bad Review Rate)】在已送达(delivered)且关联到评价表(order_reviews)的订单中，评分 <= 2 分的去重订单数除以总参评去重有效订单数，公式：COUNT(DISTINCT CASE WHEN r.review_score <= 2 THEN o.order_id END) * 100.0 / COUNT(DISTINCT o.order_id)。必须用 INNER JOIN order_reviews r ON o.order_id = r.order_id。",
       "【口径8：防扇出膨胀规范（一对多关联防笛卡尔积 Fan-out Trap）】由于 order_items（一单多品）和 order_payments（一单多次支付）或 order_reviews 同属订单的下游一对多明细表，当需要按支付方式（如 credit_card）筛选并统计商品有效GMV（SUM(oi.price)）时，严禁直接将 order_items 与 order_payments 直接 JOIN 后求和！必须使用子查询过滤：WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card')。",
       "【口径9：周期用户复购率 (Repeat Purchase Rate)】在指定统计周期内产生过有效订单(delivered)的独立买家中，有效订单数 >= 2 笔的独立买家占比(%)。必须先用 CTE 按 customer_unique_id 聚合计算 order_cnt = COUNT(DISTINCT o.order_id)，再用 SUM(CASE WHEN order_cnt >= 2 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(customer_unique_id)。",
-      "【口径10：新老客界定口径 (New vs Returning Customer)】以真实用户 customer_unique_id 在全量历史有效订单(delivered)中的首次下单时间 min_purchase_time = MIN(order_purchase_timestamp) 为准。若某用户在全量历史中的首次有效下单时间早于目标统计周期的起始时间（例如分析2018-08时，其首次有效下单时间 < '2018-08-01'），则该用户在目标周期内属于【老客】；否则属于【新客】。"
+      "【口径10：新老客界定口径 (New vs Returning Customer)】以真实用户 customer_unique_id 在全量历史有效订单(delivered)中的首次下单时间 min_purchase_time = MIN(order_purchase_timestamp) 为准。若某用户在全量历史中的首次有效下单时间早于目标统计周期的起始时间（例如分析2018-08时，其首次有效下单时间 < '2018-08-01'），则该用户在目标周期内属于【老客】；否则属于【新客】。",
+      "【参考范式1：防扇出膨胀（统计特定支付方式下的有效GMV）】\n    SELECT ROUND(SUM(oi.price), 2) AS val\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n      AND o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card');",
+      "【参考范式2：使用 CTE 计算周期用户复购率(%)】\n    WITH user_orders AS (\n        SELECT c.customer_unique_id, COUNT(DISTINCT o.order_id) AS ord_cnt\n        FROM orders o\n        JOIN customers c ON o.customer_id = c.customer_id\n        WHERE o.order_status = 'delivered'\n          AND strftime('%Y', o.order_purchase_timestamp) = '2018'\n        GROUP BY c.customer_unique_id\n    )\n    SELECT ROUND(SUM(CASE WHEN ord_cnt >= 2 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(customer_unique_id), 2) AS val\n    FROM user_orders;",
+      "【参考范式3：使用 CTE 界定历史老客并统计其在目标月份贡献的有效GMV】\n    WITH user_first_order AS (\n        SELECT c.customer_unique_id, MIN(o.order_purchase_timestamp) AS first_order_time\n        FROM orders o\n        JOIN customers c ON o.customer_id = c.customer_id\n        WHERE o.order_status = 'delivered'\n        GROUP BY c.customer_unique_id\n    )\n    SELECT ROUND(SUM(oi.price), 2) AS val\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    JOIN customers c ON o.customer_id = c.customer_id\n    JOIN user_first_order ufo ON c.customer_unique_id = ufo.customer_unique_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n      AND ufo.first_order_time < '2018-08-01';"
     ],
     "kb_schemas": [
       "【表结构：orders (订单主表)】主键: order_id | 关联键: customer_id | 字段: order_status(状态: delivered已送达, canceled已取消, shipped已发货等), order_purchase_timestamp(下单时间), order_approved_at(支付审批时间), order_delivered_customer_date(实际送达客户时间), order_estimated_delivery_date(预计送达时间)。",
@@ -37,32 +40,32 @@ window.DEMO_SNAPSHOTS = {
       "tag": "DEEP ATTRIBUTION",
       "tag_color": "indigo",
       "short_title": "2018年8月 vs 7月 大盘异动归因",
-      "question": "分析 2018 年 8 月相比 7 月电商大盘有效 GMV 变化原因，拆解量价与核心维度。",
-      "route_name": "Deep Attribution Path（多步归因 + LMDI 拆解）",
-      "guard_badge": "SQL 只读沙盒校验通过",
-      "meta_stats": "耗时 87.0s · SQL 尝试 1 次 · 命中 6 条口径",
+      "question": "对比 2018年7月（2018-07）与 2018年8月（2018-08），分析有效GMV变动的原因，并从量价漏斗、省份区域、英文商品品类维度计算异动贡献度。",
+      "route_name": "SLOW_ATTRIBUTION（异构多Agent + LMDI + Hybrid Judge）",
+      "guard_badge": "正则溯源 100.0% · Gemini 审计 5/5",
+      "meta_stats": "SQL重试 0 次 · LMDI残差 0.0 · 报告生成 1 次",
       "kpis": [
         {
           "label": "8月有效 GMV",
-          "value": "$ 838,577",
-          "sub": "7月基期: $ 867,953",
+          "value": "$ 838,576.64",
+          "sub": "7月基期: $ 867,953.46",
           "trend": "neutral"
         },
         {
           "label": "环比增量 / MoM%",
-          "value": "$ -29,377 (-3.38%)",
+          "value": "$ -29,376.82 (-3.38%)",
           "sub": "有效GMV环比变动",
           "trend": "down"
         },
         {
-          "label": "LMDI 单量贡献",
-          "value": "$ +26,191",
-          "sub": "订单数 6,159 → 6,351",
+          "label": "LMDI 单量驱动",
+          "value": "$ +26,190.82",
+          "sub": "订单 6,159 → 6,351 (残差=0)",
           "trend": "up"
         },
         {
-          "label": "LMDI 客单价贡献",
-          "value": "$ -55,531",
+          "label": "LMDI 客单价驱动",
+          "value": "$ -55,567.64",
           "sub": "AOV $ 140.92 → $ 132.04",
           "trend": "down"
         }
@@ -70,35 +73,35 @@ window.DEMO_SNAPSHOTS = {
       "nodes": [
         {
           "step": "1. Gateway & Planner",
-          "badge": "已完成",
+          "badge": "Qwen35B",
           "badge_color": "green",
-          "desc": "识别为深度异动归因，拆解大盘/州/品类 3 路查询",
-          "log": "[Router] 判定复杂度: Deep Attribution (Why 型问题)\n[Planner 输出 JSON]:\n[\n  {\"step\": \"macro\", \"goal\": \"统计 2018-07 与 2018-08 有效 GMV、有效订单数与客单价 AOV\"},\n  {\"step\": \"dim_state\", \"goal\": \"按 customer_state 对比两期有效 GMV 贡献度\"},\n  {\"step\": \"dim_category\", \"goal\": \"按英文品类对比两期有效 GMV 贡献度\"}\n]"
+          "desc": "Zhipu-Flash 分流 + Qwen35B 拆解 3 路纯中文任务",
+          "log": "[Gateway | Role=fast] 路由决策: SLOW_ATTRIBUTION (用户明确指定了对比时间段（2018-07与2018-08），且核心诉求是分析有效GMV变动原因，要求从量价漏斗、省份区域、英文商品品类维度计算异动贡献度，属于典型的对比归因与多维拆解问题。)\n[Planner | Role=reasoner] 拆解结果 (纯中文任务，严禁越界写SQL):\n[\n  \"查询并对比 2018 年 7 月与 2018 年 8 月的有效 GMV、有效订单数、有效客单价、独立买家 UV 以及履约延迟率等大盘核心指标数据。\",\n  \"下钻分析 2018 年 7 月与 2018 年 8 月各省份区域维度下，头部客户所在州的有效 GMV 与有效订单数变动情况。\",\n  \"统计并对比 2018 年 7 月与 2018 年 8 月头部英文商品品类名称下的有效 GMV 贡献度变化。\"\n]"
         },
         {
-          "step": "2. SQL Executor + 自纠错",
-          "badge": "尝试1次通过",
+          "step": "2. SQL Agent + Debugger",
+          "badge": "重试0次",
           "badge_color": "teal",
-          "desc": "执行语义 RAG 检索并校验非空与只读权限",
-          "log": "[ChromaDB] 命中口径: 有效GMV(delivered & price), 客单价AOV(DISTINCT order_id)\n[生成并执行 SQL (尝试 1 次)]:\nSELECT\n    strftime('%Y-%m', o.order_purchase_timestamp) AS stat_month,\n    ROUND(SUM(oi.price), 2) AS effective_gmv,\n    COUNT(DISTINCT o.order_id) AS effective_order_count,\n    ROUND(SUM(oi.price) * 1.0 / COUNT(DISTINCT o.order_id), 2) AS aov\nFROM orders o\nINNER JOIN order_items oi ON o.order_id = oi.order_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\nGROUP BY strftime('%Y-%m', o.order_purchase_timestamp)\nORDER BY stat_month ASC;\n\n[SQLite 返回结果]:\n| stat_month   |   effective_gmv |   effective_order_count |    aov |\n|:-------------|----------------:|------------------------:|-------:|\n| 2018-07      |          867953 |                    6159 | 140.92 |\n| 2018-08      |          838577 |                    6351 | 132.04 |"
+          "desc": "中文 Hybrid RAG + 只读安全护栏 + 异构排障兜底",
+          "log": "[SQL Executor | Role=coder -> Qwen3.8-27B] Debugger介入: False\n--- 子任务 1: 查询并对比 2018 年 7 月与 2018 年 8 月的有效 GMV、有效订单数、有效客单价、独立买家 UV 以及履约延迟率等大盘核心指标数据。\nSELECT\n  strftime('%Y-%m', o.order_purchase_timestamp) AS stat_month,\n  ROUND(SUM(oi.price), 2) AS valid_gmv,\n  COUNT(DISTINCT o.order_id) AS valid_order_cnt,\n  ROUND(\n    SUM(oi.price) * 1.0 / NULLIF(COUNT(DISTINCT o.order_id), 0),\n    2\n  ) AS valid_aov,\n  COUNT(DISTINCT c.customer_unique_id) AS uv,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN o.order_delivered_customer_date IS NOT NULL\n       AND o.order_estimated_delivery_date IS NOT NULL\n       AND julianday(o.order_delivered_customer_date) - julianday(o.order_estimated_delivery_date) > 0\n      THEN o.order_id\n    END) * 100.0 / NULLIF(COUNT(DISTINCT o.order_id), 0),\n    2\n  ) AS fulfillment_delay_rate\nFROM orders o\nJOIN order_items oi\n  ON o.order_id = oi.order_id\nJOIN customers c\n  ON o.customer_id = c.customer_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\nGROUP BY strftime('%Y-%m', o.order_purchase_timestamp)\nORDER BY stat_month;\n\n--- 子任务 2: 下钻分析 2018 年 7 月与 2018 年 8 月各省份区域维度下，头部客户所在州的有效 GMV 与有效订单数变动情况。\nWITH monthly_customer_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month,\n        c.customer_state,\n        c.customer_unique_id,\n        SUM(oi.price) AS cust_gmv,\n        COUNT(DISTINCT o.order_id) AS cust_orders\n    FROM orders o\n    JOIN customers c ON o.customer_id = c.customer_id\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp), c.customer_state, c.customer_unique_id\n),\nranked_customers AS (\n    SELECT \n        month,\n        customer_state,\n        customer_unique_id,\n        cust_gmv,\n        cust_orders,\n        ROW_NUMBER() OVER (PARTITION BY month, customer_state ORDER BY cust_gmv DESC) AS rnk\n    FROM monthly_customer_gmv\n)\nSELECT \n    rc.month,\n    rc.customer_state,\n    ROUND(SUM(rc.cust_gmv), 2) AS top_customer_valid_gmv,\n    SUM(rc.cust_orders) AS top_customer_valid_orders\nFROM ranked_customers rc\nWHERE rc.rnk <= 10\nGROUP BY rc.month, rc.customer_state\nORDER BY rc.month ASC, top_customer_valid_gmv DESC;\n\n--- 子任务 3: 统计并对比 2018 年 7 月与 2018 年 8 月头部英文商品品类名称下的有效 GMV 贡献度变化。\nWITH monthly_category_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month_str,\n        COALESCE(t.product_category_name_english, 'unknown') AS category_english,\n        SUM(oi.price) AS category_gmv\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    LEFT JOIN products p ON oi.product_id = p.product_id\n    LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp), COALESCE(t.product_category_name_english, 'unknown')\n),\nmonthly_total_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month_str,\n        SUM(oi.price) AS total_gmv\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp)\n),\nranked_categories AS (\n    SELECT \n        mcg.month_str,\n        mcg.category_english,\n        mcg.category_gmv,\n        mtg.total_gmv,\n        ROUND(mcg.category_gmv * 100.0 / mtg.total_gmv, 4) AS gmv_contribution_pct,\n        ROW_NUMBER() OVER (PARTITION BY mcg.month_str ORDER BY mcg.category_gmv DESC) as rk\n    FROM monthly_category_gmv mcg\n    JOIN monthly_total_gmv mtg ON mcg.month_str = mtg.month_str\n)\nSELECT \n    month_str,\n    category_english,\n    ROUND(category_gmv, 2) AS category_gmv,\n    ROUND(total_gmv, 2) AS total_gmv,\n    gmv_contribution_pct,\n    rk AS category_rank\nFROM ranked_categories\nWHERE rk <= 10\nORDER BY month_str, rk;"
         },
         {
           "step": "3. Python LMDI 沙盒",
-          "badge": "残差 = 0.00",
+          "badge": "残差=0.0",
           "badge_color": "purple",
-          "desc": "执行确定性 LMDI 量价分解与长尾(<1%)降噪",
-          "log": "[LMDI 无残差分解结果]\n  7月基期 GMV  : $ 867,953.46\n  8月当期 GMV  : $ 838,576.64\n  总环比变化   : $ -29,376.82 (-3.38%)\n  ├─ 单量驱动  : $ +26,190.82 (占比 -89.2%)\n  └─ 客单价驱动: $ -55,531.36 (占比 189.0%)\n  校验残差     : 36.2800 (通过)"
+          "desc": "确定性 LMDI 量价分解 + 基期<1%长尾噪音过滤",
+          "log": "### 一、大盘原始指标表 (2018-07 vs 2018-08)\n| ym      |   valid_gmv |   valid_orders |   uv |   delay_rate |\n|:--------|------------:|---------------:|-----:|-------------:|\n| 2018-07 |      867953 |           6159 | 6100 |         4.37 |\n| 2018-08 |      838577 |           6351 | 6310 |        10.35 |\n\n### 二、LMDI 无残差量价分解 (Python 精确计算，残差=0.0)\n{\n  \"gmv_t0\": 867953.46,\n  \"gmv_t1\": 838576.64,\n  \"ord_t0\": 6159,\n  \"ord_t1\": 6351,\n  \"aov_t0\": 140.92,\n  \"aov_t1\": 132.04,\n  \"delta_gmv\": -29376.82,\n  \"mom_pct\": -3.38,\n  \"effect_orders\": 26190.82,\n  \"effect_aov\": -55567.64,\n  \"order_dir_contrib_pct\": 89.15,\n  \"aov_dir_contrib_pct\": -189.15,\n  \"residual\": 0.0\n}\n\n### 三、重点省份异动贡献度 Top 6 (已剔除基期<1%长尾，+为拉动大盘/-为拖累大盘)\n| 省份   |   2018-07GMV |   2018-08GMV |   变动额(Delta) |   环比(%) |   方向贡献度(%) |\n|:-------|-------------:|-------------:|----------------:|----------:|----------------:|\n| SP     |     321647   |    387734    |        66086.5  |     20.55 |          224.96 |\n| BA     |      41869   |     21113.8  |       -20755.2  |    -49.57 |          -70.65 |\n| ES     |      30001.4 |     16447    |       -13554.3  |    -45.18 |          -46.14 |\n| PE     |      24359   |     11648.2  |       -12710.8  |    -52.18 |          -43.27 |\n| PB     |      15188.7 |      7669.63 |        -7519.05 |    -49.5  |          -25.6  |\n| PR     |      45108.9 |     38500.4  |        -6608.55 |    -14.65 |          -22.5  |\n\n### 四、重点英文品类异动贡献度 Top 6 (已剔除基期<1%长尾，+为拉动大盘/-为拖累大盘)\n| 英文品类                        |   2018-07GMV |   2018-08GMV |   变动额(Delta) |   环比(%) |   方向贡献度(%) |\n|:--------------------------------|-------------:|-------------:|----------------:|----------:|----------------:|\n| watches_gifts                   |     95164.8  |     69767.1  |       -25397.7  |    -26.69 |          -86.46 |\n| health_beauty                   |    103524    |    119391    |        15866.8  |     15.33 |           54.01 |\n| telephony                       |     26492.7  |     36572.9  |        10080.2  |     38.05 |           34.31 |\n| garden_tools                    |     25639.9  |     16314.7  |        -9325.18 |    -36.37 |          -31.74 |\n| construction_tools_construction |     15237.5  |     22917.2  |         7679.69 |     50.4  |           26.14 |\n| fixed_telephony                 |      9319.39 |      2724.17 |        -6595.22 |    -70.77 |          -22.45 |"
         },
         {
-          "step": "4. Reporter 诊断报告",
-          "badge": "数值已溯源",
+          "step": "4. Reporter + Hybrid Judge",
+          "badge": "5/5 通过",
           "badge_color": "blue",
-          "desc": "汇总量价归因与 Top 维度输出结构化报告",
-          "log": "[Reporter Agent] 已基于 Python 确定性算子数据生成诊断报告。\n[数值溯源校验] 所有核心指标 ($ 838,576.64, -3.38%, $ +26,190.82, $ -55,531.36) 均严格对齐上游数仓查询结果。"
+          "desc": "Qwen写报告 + 正则硬溯源 + 异源Google Gemini审计",
+          "log": "[Reporter | Role=writer] 生成次数: 1\n[Hybrid Judge | Python正则 + Google-Gemini-3.5-Flash 跨厂商审计]:\n{\n  \"faithfulness_score\": 5,\n  \"methodology_score\": 5,\n  \"actionability_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"报告数据与上游真值包完全一致，LMDI量价分解及各维度Top6归因准确无误，无幻觉或逻辑错误。\",\n  \"regex_grounding_pct\": 100.0,\n  \"ungrounded_nums\": []\n}"
         }
       ],
       "charts": {
-        "left_title": "LMDI 量价无残差拆解瀑布图 (BRL)",
+        "left_title": "LMDI 无残差量价分解瀑布图 (BRL)",
         "left_type": "waterfall",
         "waterfall_data": {
           "base_label": "7月基期",
@@ -106,11 +109,11 @@ window.DEMO_SNAPSHOTS = {
           "order_label": "单量驱动",
           "order_delta": 26190.82,
           "aov_label": "客单价驱动",
-          "aov_delta": -55531.36,
+          "aov_delta": -55567.64,
           "end_label": "8月当期",
           "end_val": 838576.64
         },
-        "right_title": "核心省份 (State) 环比变动贡献 Top 6 (BRL)",
+        "right_title": "核心省份 (State) 环比变动贡献 Top 6 (BRL, 已剔除<1%长尾)",
         "right_type": "hbar",
         "hbar_data": [
           {
@@ -139,75 +142,75 @@ window.DEMO_SNAPSHOTS = {
           }
         ]
       },
-      "report_md": "核心结论\n\n2018-08有效GMV为 $ 838,576.64，2018-07为 $ 867,953.46，环比总增量为 $ -29,376.82（-3.38%）。订单数由 6159 增至 6351，LMDI单量驱动为 $ +26,190.82；AOV由 $ 140.92 降至 $ 132.04，客单价驱动为 $ -55,531.36，残差=0.00。8月大盘异动主要由客单价下滑导致，单量增长形成部分对冲。\n\n核心驱动维度\n\n省份维度上，SP变化为 BRL +66,086.46，是最大正向省份；BA为 BRL -20,755.16、ES为 BRL -13,554.32、PE为 BRL -12,710.81、PB为 BRL -7,519.05、PR为 BRL -6,608.55，构成主要负向省份。\n\n品类维度上，watches_gifts变化为 BRL -25,397.73，是最大负向品类；health_beauty为 BRL +15,866.79、telephony为 BRL +10,080.23、construction_tools_construction为 BRL +7,679.69，构成主要正向品类；garden_tools为 BRL -9,325.18，亦形成负向拖累。\n\n策略建议\n\n建议优先围绕AOV由 $ 140.92 降至 $ 132.04 展开下钻，核查价格带、促销力度、商品组合与订单结构变化，识别客单价下滑来源。区域上，复盘SP BRL +66,086.46 的增长驱动，评估可复制性；对BA、ES、PE、PB、PR的负向变化排查流量、转化、供给与履约异常。品类上，重点诊断watches_gifts BRL -25,397.73 与garden_tools BRL -9,325.18 的库存、价格、可售商品及需求变化，同时放大health_beauty BRL +15,866.79、telephony BRL +10,080.23、construction_tools_construction BRL +7,679.69 的正向贡献。"
+      "report_md": "# 电商大盘异动归因诊断报告\n\n- **报告日期**：2026-11-20\n- **汇报对象**：业务 VP\n- **分析周期**：2018年7月（2018-07） vs 2018-08（2018-08）\n\n---\n\n## 一、 大盘核心指标总览\n\n2018年8月，大盘有效GMV出现环比回落。现将2018-07与2018-08的核心指标对比呈现如下：\n\n- **有效GMV (valid_gmv)**：由 2018-07 的 867953 下降至 2018-08 的 838577（精确计算：由 867953.46 变动至 838576.64，环比变动幅度为 -3.38%，总变动额 delta_gmv 为 -29376.82）。\n- **有效订单数 (valid_orders)**：由 6159 增长至 6351。\n- **访客数 (uv)**：由 6100 增长至 6310。\n- **延误率 (delay_rate)**：由 4.37% 显著上升至 10.35%。\n\n---\n\n## 二、 量价漏斗模型：LMDI 无残差分解结论\n\n为了准确剥离订单量与客单价对有效GMV变动的具体驱动效应，采用 LMDI 无残差分解法进行归因。分解残差严格为 0.0。具体数值如下：\n\n- **基期与报告期 GMV**：gmv_t0 为 867953.46，gmv_t1 为 838576.64。\n- **订单量与客单价基础数据**：\n  - 订单数：ord_t0 为 6159，ord_t1 为 6351。\n  - 客单价 (aov)：aov_t0 为 140.92，aov_t1 为 132.04。\n- **驱动效应拆解**：\n  - **单量驱动效应 (effect_orders)**：+26190.82，方向贡献度为 89.15%。单量增长对大盘起到了正向拉动作用。\n  - **客单价驱动效应 (effect_aov)**：-55567.64，方向贡献度为 -189.15%。客单价的大幅下滑是拖累大盘 GMV 增长的绝对主因。\n\n---\n\n## 三、 省份区域维度归因分析\n\n剔除基期占比小于 1% 的长尾省份后，重点省份异动贡献度 Top 6 表现如下（+为拉动大盘，-为拖累大盘）：\n\n1. **SP**：2018-07GMV 为 321647，2018-08GMV 为 387734，变动额(Delta)为 66086.5，环比增长 20.55%，方向贡献度为 224.96%（大盘最核心的正向拉动省份）。\n2. **BA**：2018-07GMV 为 41869，2018-08GMV 为 21113.8，变动额(Delta)为 -20755.2，环比下降 -49.57%，方向贡献度为 -70.65%（主要的负向拖累省份）。\n3. **ES**：2018-07GMV 为 30001.4，2018-08GMV 为 16447，变动额(Delta)为 -13554.3，环比下降 -45.18%，方向贡献度为 -46.14%。\n4. **PE**：2018-07GMV 为 24359，2018-08GMV 为 11648.2，变动额(Delta)为 -12710.8，环比下降 -52.18%，方向贡献度为 -43.27%。\n5. **PB**：2018-07GMV 为 15188.7，2018-08GMV 为 7669.63，变动额(Delta)为 -7519.05，环比下降 -49.50%，方向贡献度为 -25.60%。\n6. **PR**：2018-07GMV 为 45108.9，2018-08GMV 为 38500.4，变动额(Delta)为 -6608.55，环比下降 -14.65%，方向贡献度为 -22.50%。\n\n---\n\n## 四、 英文商品品类维度归因分析\n\n剔除基期占比小于 1% 的长尾品类后，重点英文品类异动贡献度 Top 6 表现如下（+为拉动大盘，-为拖累大盘）：\n\n1. **watches_gifts**：2018-07GMV 为 95164.8，2018-08GMV 为 69767.1，变动额(Delta)为 -25397.7，环比下降 -26.69%，方向贡献度为 -86.46%（主要品类拖累项）。\n2. **health_beauty**：2018-07GMV 为 103524，2018-08GMV 为 119391，变动额(Delta)为 15866.8，环比增长 15.33%，方向贡献度为 54.01%（核心正向拉动品类）。\n3. **telephony**：2018-07GMV 为 26492.7，2018-08GMV 为 36572.9，变动额(Delta)为 10080.2，环比增长 38.05%，方向贡献度为 34.31%。\n4. **garden_tools**：2018-07GMV 为 25639.9，2018-08GMV 为 16314.7，变动额(Delta)为 -9325.18，环比下降 -36.37%，方向贡献度为 -31.74%。\n5. **construction_tools_construction**：2018-07GMV 为 15237.5，2018-08GMV 为 22917.2，变动额(Delta)为 7679.69，环比增长 50.40%，方向贡献度为 26.14%。\n6. **fixed_telephony**：2018-07GMV 为 9319.39，2018-08GMV 为 2724.17，变动额(Delta)为 -6595.22，环比下降 -70.77%，方向贡献度为 -22.45%。"
     },
     {
       "id": "fast_path",
       "tag": "FAST PATH",
       "tag_color": "emerald",
-      "short_title": "8月有效 GMV 与取消率查询",
-      "question": "查询 2018年8月 有效 GMV 与订单取消率",
-      "route_name": "Fast SQL Path（单步极速直查，跳过多Agent拆解）",
+      "short_title": "8月有效 GMV 与取消率极速查询",
+      "question": "查询 2018年8月 有效GMV 和订单取消率分别是多少？",
+      "route_name": "FAST_SQL（智谱Flash路由直通单步SQL，跳过重型归因）",
       "guard_badge": "双口径隔离校验通过",
-      "meta_stats": "耗时 26.6s · 节省 ~75% Token · 命中 3 条口径",
+      "meta_stats": "SQL重试 0 次 · 节省 ~75% Token 与延迟",
       "kpis": [
         {
           "label": "8月有效 GMV",
           "value": "$ 838,576.64",
-          "sub": "过滤 order_status='delivered'",
+          "sub": "仅统计 delivered 订单售价",
           "trend": "neutral"
         },
         {
           "label": "8月订单取消率",
           "value": "1.29%",
-          "sub": "取消 84 / 总下单 6512",
+          "sub": "分母包含全状态下单总量",
           "trend": "down"
         },
         {
-          "label": "执行路径",
-          "value": "Fast Path",
-          "sub": "直连单步 Text-to-SQL",
-          "trend": "neutral"
+          "label": "路由策略",
+          "value": "FAST_SQL",
+          "sub": "直连 Coder 模型单步出数",
+          "trend": "up"
         },
         {
-          "label": "SQL 尝试次数",
-          "value": "1 次",
-          "sub": "一次命中语义口径",
+          "label": "SQL 重试次数",
+          "value": "0 次",
+          "sub": "Hybrid RAG 一次命中",
           "trend": "up"
         }
       ],
       "nodes": [
         {
-          "step": "1. Gateway & Router",
-          "badge": "Fast Path",
+          "step": "1. Gateway 网关",
+          "badge": "Zhipu-Flash",
           "badge_color": "green",
-          "desc": "识别为明确时间与指标的 What 型查询，直通快思考流",
-          "log": "[Router] 判定复杂度: FAST_SQL\n[原因] 时间范围明确(2018-08)，指标为单点查询(有效GMV + 取消率)，无需唤醒 Multi-Agent 归因编排，直接路由至单步 SQL 引擎。"
+          "desc": "识别为明确单点查询，秒切快思考流",
+          "log": "[Gateway | Role=fast] 路由决策: FAST_SQL\n理由: 用户提问时间范围明确（2018年8月），且指标明确（有效GMV、订单取消率），属于典型的具体数值查询（What型问题）。"
         },
         {
-          "step": "2. SQL Executor + 口径隔离",
-          "badge": "尝试1次通过",
+          "step": "2. SQL Executor",
+          "badge": "Qwen27B",
           "badge_color": "teal",
-          "desc": "自动区分 GMV(delivered) 与 取消率(全量分母)",
-          "log": "[ChromaDB] 关键口径冲突预警已处理:\n  • 有效GMV 必须过滤 delivered 且只加 price\n  • 订单取消率 WHERE 不可过滤 delivered，分母必须含全状态订单！\n\n[执行 SQL]:\n-- 查询 2018年8月 的有效GMV(保留2位小数)以及订单取消率百分比(保留2位小数，分母为2018-08全部下单订单)\nWITH ValidGMV AS (\n    SELECT ROUND(SUM(oi.price), 2) AS valid_gmv\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n),\nOrderCancellationRate AS (\n    SELECT\n        ROUND(\n            SUM(CASE WHEN o.order_status = 'canceled' THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(DISTINCT o.order_id),\n            2\n        ) AS cancellation_rate_percentage\n    FROM orders o\n    WHERE strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n)\nSELECT\n    v.valid_gmv,\n    o.cancellation_rate_percentage\nFROM ValidGMV v, OrderCancellationRate o;\n\n[返回数据]:\n|   valid_gmv |   cancellation_rate_percentage |\n|------------:|-------------------------------:|\n|      838577 |                           1.29 |"
+          "desc": "自动隔离有效GMV(delivered)与取消率(全量分母)",
+          "log": "[SQL Executor | Role=coder]\nSELECT \n    (SELECT ROUND(SUM(oi.price), 2) \n     FROM orders o \n     JOIN order_items oi ON o.order_id = oi.order_id \n     WHERE o.order_status = 'delivered' \n       AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08') AS effective_gmv,\n    (SELECT SUM(CASE WHEN order_status = 'canceled' THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(DISTINCT order_id) \n     FROM orders \n     WHERE strftime('%Y-%m', order_purchase_timestamp) = '2018-08') AS cancellation_rate;\n\n[返回结果]:\n|   effective_gmv |   cancellation_rate |\n|----------------:|--------------------:|\n|          838577 |             1.28993 |"
         },
         {
-          "step": "3. Python 沙盒 (跳过)",
+          "step": "3. Python LMDI 沙盒",
           "badge": "按需跳过",
           "badge_color": "gray",
-          "desc": "单点查询无需运行 LMDI 复杂分解算子",
-          "log": "[System] 当前路由为 FAST_SQL，已自动跳过重型 Python 归因沙盒以降低响应延迟。"
+          "desc": "快思考路径自动跳过复杂归因算子",
+          "log": "[System] FAST_SQL 路径已跳过 Planner、LMDI 沙盒与重型审计，降低 75% 耗时。"
         },
         {
-          "step": "4. Reporter 简报输出",
+          "step": "4. Reporter 简报",
           "badge": "已交付",
           "badge_color": "blue",
-          "desc": "输出精简指标卡与近6个月趋势解读",
-          "log": "[Reporter Agent] 已按双口径规范生成指标简报：8月有效GMV $ 838,576.64，取消率 1.29%。"
+          "desc": "输出精简指标回答与口径说明",
+          "log": "[Reporter | Role=writer] 已输出单点指标简报。"
         }
       ],
       "charts": {
-        "left_title": "2018年3月-8月 有效GMV 走势 (BRL)",
+        "left_title": "2018年3月-8月 有效GMV 趋势 (BRL)",
         "left_type": "bar_simple",
         "bar_data": [
           {
@@ -235,7 +238,7 @@ window.DEMO_SNAPSHOTS = {
             "value": 838576.64
           }
         ],
-        "right_title": "2018年3月-8月 订单取消率趋势 (%)",
+        "right_title": "2018年3月-8月 订单取消率走势 (%)",
         "right_type": "line",
         "line_data": [
           {
@@ -264,71 +267,71 @@ window.DEMO_SNAPSHOTS = {
           }
         ]
       },
-      "report_md": "### 核心指标值\n- **2018年8月有效GMV**：$838,576.64（口径：仅统计delivered订单商品售价price）\n- **2018年8月订单取消率**：1.29%（84 / 6512笔，分母为全状态下单总量）\n\n### 口径说明\n- 有效GMV：指在2018年8月内，已成功交付的订单商品售价总和。\n- 订单取消率：指在2018年8月内，被取消订单数量占全状态下单总量的百分比。\n\n### 3-8月趋势特征\n- **有效GMV趋势**：从2018年3月的$953,356.25下降至2018年8月的$838,576.64，整体呈下降趋势。\n- **订单取消率趋势**：从2018年3月的0.36%上升至2018年8月的1.29%，整体呈上升趋势。尤其在2018年7月达到峰值0.65%，随后在8月略有下降。"
+      "report_md": "2018年8月有效GMV为838,577。该口径按订单状态为delivered的订单，关联订单明细后汇总商品金额。订单取消率为1.28993%。该口径按2018年8月购买订单中状态为canceled的订单数占去重订单总数计算。"
     },
     {
       "id": "anti_fan_out",
       "tag": "ANTI-FAN-OUT",
       "tag_color": "amber",
-      "short_title": "信用卡支付订单 GMV（防扇出测试）",
+      "short_title": "信用卡支付 GMV（防扇出膨胀）",
       "question": "统计 2018年8月 使用信用卡支付过的有效订单对应的商品有效 GMV 总和",
-      "route_name": "Hard Semantic Guard（防笛卡尔积扇出规范激活）",
-      "guard_badge": "防扇出子查询规则已命中",
-      "meta_stats": "耗时 349.7s · SQL 尝试 1 次 · 拦截潜在虚高 0.70%",
+      "route_name": "Hard Semantic Guard（中文混合RAG命中防扇出规范）",
+      "guard_badge": "IN 子查询粒度隔离通过",
+      "meta_stats": "尝试 1 次 · 成功拦截直接JOIN虚高 +$ 4,710.68",
       "kpis": [
         {
           "label": "信用卡有效 GMV (正确)",
           "value": "$ 677,560.52",
-          "sub": "子查询 IN 粒度隔离",
+          "sub": "IN 子查询粒度隔离",
           "trend": "up"
         },
         {
           "label": "直接 JOIN 膨胀值 (错误)",
           "value": "$ 682,271.20",
-          "sub": "一单多次支付导致重复求和",
+          "sub": "一单多笔支付导致重复求和",
           "trend": "down"
         },
         {
           "label": "成功拦截虚高误差",
           "value": "+$ 4,710.68",
-          "sub": "相对误差 +0.70%",
+          "sub": "相对虚高 +0.70%",
           "trend": "neutral"
         },
         {
           "label": "SQL 尝试次数",
           "value": "1 次",
-          "sub": "Hard 级语义对齐成功",
+          "sub": "Hard 题 Pass@1 命中",
           "trend": "up"
         }
       ],
       "nodes": [
         {
-          "step": "1. Gateway & 语义扫描",
-          "badge": "高风险陷阱",
+          "step": "1. Hybrid RAG 检索",
+          "badge": "词法+向量",
           "badge_color": "green",
-          "desc": "检测到同时涉及商品明细与支付明细表",
-          "log": "[Router] 识别到跨事实表关联请求: order_items (商品明细) + order_payments (支付明细)\n[风险预警] 两者同为 orders 的 1:N 下游表，直接 JOIN 将触发笛卡尔积扇出膨胀 (Fan-out Trap)！"
+          "desc": "中文 2-gram 精准召回《口径8：防扇出膨胀规范》",
+          "log": "[Hybrid RAG] 命中核心规范:\n• 口径8：严禁将 order_items 与 order_payments 直接 JOIN 后求和！必须使用 WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments ...)"
         },
         {
-          "step": "2. SQL Executor + 防膨胀生成",
-          "badge": "尝试1次通过",
+          "step": "2. SQL Agent 执行",
+          "badge": "尝试1次",
           "badge_color": "teal",
-          "desc": "命中《防扇出膨胀规范》，改写为 IN 子查询过滤",
-          "log": "[ChromaDB 命中规则]: 严禁直接将 order_items 与 order_payments JOIN 后求和！必须用 WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments ...)\n\n[Agent 生成的安全 SQL]:\nSELECT ROUND(SUM(oi.price), 2) AS val\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n  AND o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card');\n\n[查询结果]:\n|    val |\n|-------:|\n| 677561 |"
+          "desc": "生成安全子查询 SQL 并通过只读校验",
+          "log": "[SQL Executor | Role=coder]\nSELECT ROUND(SUM(oi.price), 2) AS val\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n  AND o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card');\n\n[返回结果]:\n|    val |\n|-------:|\n| 677561 |"
         },
         {
-          "step": "3. 对照沙盒校验",
-          "badge": "误差拦截",
+          "step": "3. 防扇出误差对照",
+          "badge": "拦截+0.70%",
           "badge_color": "purple",
-          "desc": "对比 Naive 直接 Join 产生的虚高差额",
-          "log": "[对照验证]\n  • 正确粒度隔离结果 : $ 677,560.52\n  • 直接 JOIN 错误结果: $ 682,271.20\n  • 拦截虚高金额     : $ 4,710.68 (+0.70%)"
+          "desc": "对比 Naive 直接 Join 产生的笛卡尔积膨胀",
+          "log": "[对照验证]\n正确隔离值: $ 677,560.52\n直接JOIN值: $ 682,271.20\n拦截虚高额: +$ 4,710.68 (+0.70%)"
         },
         {
-          "step": "4. Reporter 技术说明",
+          "step": "4. 结论输出",
           "badge": "已溯源",
           "badge_color": "blue",
-          "desc": "输出口径说明与支付方式订单分布",
-          "log": "[Reporter Agent] 已生成防扇出机制解析报告并附带真实对比校验数据。"
+          "desc": "输出防扇出原理解析与支付结构分布",
+          "log": "[Reporter] Hard 级防扇出测试验证通过。"
         }
       ],
       "charts": {
@@ -367,7 +370,114 @@ window.DEMO_SNAPSHOTS = {
           }
         ]
       },
-      "report_md": "# 防扇出膨胀（Fan-out Trap）专项测试报告\n\n## 一、测试结论\n\n本次针对 2018-08 订单金额统计场景进行了防扇出膨胀专项验证。实验结果表明：若将订单表直接与支付明细表 order_payments 进行 JOIN，会导致订单金额被重复计算，形成典型的 Fan-out Trap 扇出膨胀问题。\n\n| 指标 | 结果 |\n|---|---:|\n| 正确防扇出 SQL 结果，使用 IN 子查询隔离 | $ 677,560.52 |\n| 错误直接 JOIN 膨胀结果，Naive Baseline 典型错误 | $ 682,271.20 |\n| 多算虚高误差 | +$ 4,710.68 |\n| 虚高比例 | +0.70% |\n\n结论：直接 JOIN order_payments 得到的金额结果不可用于财务、经营分析或 BI 报表展示。正确金额应为 $ 677,560.52，错误口径虚高 $ 4,710.68，相对误差为 +0.70%。\n\n---\n\n## 二、为什么不能直接 JOIN order_payments\n\n### 1. 表粒度不一致\n\n订单表通常以订单为最小统计粒度，一笔订单对应一行订单主记录。而 order_payments 通常是支付明细粒度，一笔订单可能对应多条支付记录，例如：\n\n- 一笔订单分多次支付；\n- 一笔订单存在支付失败后重试；\n- 一笔订单存在部分支付、补支付；\n- 一笔订单存在退款、冲正或支付流水拆分；\n- 一笔订单关联多个 payment_sequential 支付序号。\n\n因此，orders 与 order_payments 之间不是一一对应关系，而是一对多关系。\n\n### 2. 直接 JOIN 会复制订单金额\n\n如果采用类似如下逻辑：\n\nSELECT SUM(o.order_amount)\nFROM orders o\nJOIN order_payments op\n  ON o.order_id = op.order_id\n\n当一笔订单在 order_payments 中存在 2 条支付记录时，该订单的 order_amount 会在 JOIN 结果中出现 2 次。若后续直接对订单金额求和，该订单金额就会被重复累加。\n\n这就是典型的扇出膨胀：\n\n订单粒度数据 JOIN 明细粒度数据后，订单侧指标被明细侧行数放大。\n\n### 3. 支付金额合计正确，不代表订单金额可以直接 JOIN\n\n即使 order_payments 中所有支付金额合计等于订单金额，也不代表可以直接 JOIN 后汇总订单金额。原因是：\n\n- 支付明细表适合统计支付流水、支付渠道、支付成功率、支付金额等支付粒度指标；\n- 订单金额、订单数、GMV、客单价等订单粒度指标，应基于订单粒度事实表或订单主表计算；\n- 跨粒度直接 JOIN 会破坏原表聚合粒度，导致指标口径漂移。\n\n### 4. 本次误差说明问题真实存在\n\n本次实验中，错误直接 JOIN 结果为 $ 682,271.20，正确防扇出结果为 $ 677,560.52，虚高 $ 4,710.68，比例为 +0.70%。\n\n虽然 0.70% 的误差在业务感知上可能不明显，但在财务对账、收入确认、经营分析、同比环比、目标达成率等场景中，这种误差属于不可接受的非确定性偏差。尤其当数据量扩大、多支付订单比例上升时，误差会进一步放大。\n\n---\n\n## 三、2018-08 各支付方式订单数分布\n\n| 支付方式 | 订单数 |\n|---|---:|\n| credit_card | 4,883 |\n| boleto | 1,119 |\n| debit_card | 270 |\n| voucher | 179 |\n| 合计 | 6,451 |\n\n从分布看，credit_card 占绝对主体，boleto 为第二主要支付方式，debit_card 和 voucher 占比较小。该分布说明支付方式并非单一，且不能默认“一笔订单只对应一条支付记录”。\n\n在 BI 建模中，如果仅按支付方式做简单过滤或关联，而未考虑 order_payments 的明细粒度，就容易引入扇出膨胀风险。\n\n---\n\n## 四、正确查询方式与错误查询方式对比\n\n### 1. 错误方式：直接 JOIN order_payments\n\n典型错误逻辑：\n\nSELECT SUM(o.order_amount)\nFROM orders o\nJOIN order_payments op\n  ON o.order_id = op.order_id\nWHERE ...\n\n风险：\n\n- 一笔订单对应多条支付记录时，订单金额被重复计算；\n- SUM(order_amount) 结果虚高；\n- 订单数如果未使用 DISTINCT，也可能被重复计数；\n- 报表结果随支付明细行数变化，口径不稳定。\n\n### 2. 正确方式：使用 IN 或 EXISTS 子查询隔离\n\n正确逻辑示例：\n\nSELECT SUM(o.order_amount)\nFROM orders o\nWHERE o.order_id IN (\n  SELECT op.order_id\n  FROM order_payments op\n  WHERE ...\n)\n\n优点：\n\n- 子查询仅用于筛选符合条件的订单；\n- 外层仍保持订单粒度；\n- 不会因支付明细行数增加而复制订单金额；\n- 结果稳定，符合订单金额统计口径。\n\n也可以使用 EXISTS：\n\nSELECT SUM(o.order_amount)\nFROM orders o\nWHERE EXISTS (\n  SELECT 1\n  FROM order_payments op\n  WHERE op.order_id = o.order_id\n    AND ...\n)\n\n### 3. 如果必须关联支付表，应先聚合到订单粒度\n\n若业务需要同时使用支付表字段，建议先将 order_payments 聚合到 order_id 粒度，再与订单表关联。例如：\n\nSELECT SUM(o.order_amount)\nFROM orders o\nJOIN (\n  SELECT order_id\n  FROM order_payments\n  WHERE ...\n  GROUP BY order_id\n) op\n  ON o.order_id = op.order_id\n\n这样可以避免明细行直接放大订单行。\n\n---\n\n## 五、架构与 BI 落地建议\n\n### 1. 明确指标粒度\n\n不同指标必须绑定对应粒度：\n\n| 指标类型 | 推荐粒度 | 推荐来源 |\n|---|---|---|\n| 订单金额、订单数、客单价 | 订单粒度 | orders 或订单事实表 |\n| 支付金额、支付笔数、支付成功率 | 支付明细粒度 | order_payments 或支付事实表 |\n| 商品销售额、商品数量 | 订单商品粒度 | order_items 或商品事实表 |\n\n禁止在订单粒度指标中直接 JOIN 支付明细表后求和。\n\n### 2. 建立防扇出校验机制\n\n建议在数仓开发流程中增加以下校验：\n\n| 校验项 | 说明 |\n|---|---|\n| COUNT(order_id) 与 COUNT(DISTINCT order_id) 对比 | 若不一致，说明存在扇出 |\n| JOIN 前后行数监控 | 行数异常放大需告警 |\n| 金额差异监控 | 订单金额汇总与支付金额汇总需按口径分别校验 |\n| 多支付订单抽样 | 对一笔订单多条支付记录进行业务确认 |\n\n### 3. BI 模型层避免跨粒度自动 JOIN\n\n在 BI 工具中，不应让分析人员随意将订单表与支付明细表直接拖拽关联。建议：\n\n- 在数据仓库层提前构建订单粒度宽表；\n- 将支付明细指标预聚合为订单粒度支付汇总表；\n- 在 BI 层只暴露符合粒度的数据集；\n- 对跨粒度关联增加权限或口径说明。\n\n### 4. 指标口径文档化\n\n对于本次涉及指标，应明确记录：\n\n| 指标 | 正确口径 |\n|---|---|\n| 订单金额 | 基于订单粒度汇总，不使用支付明细 JOIN 后直接 SUM |\n| 支付金额 | 基于支付明细粒度汇总，不直接等同于订单金额 |\n| 支付方式筛选 | 可通过 IN、EXISTS 或预聚合支付表筛选订单，但不得破坏订单粒度 |\n\n---\n\n## 六、最终结论\n\n本次测试验证了直接 JOIN order_payments 会导致订单金额扇出膨胀。错误口径结果为 $ 682,271.20，正确防扇出口径结果为 $ 677,560.52，虚高 $ 4,710.68，虚高比例为 +0.70%。\n\n因此，在数仓建模和 BI 报表开发中，不能直接将订单表与 order_payments 明细表进行 JOIN 后汇总订单金额。正确做法是使用 IN、EXISTS 子查询隔离订单集合，或先将支付明细聚合到订单粒度后再关联，确保指标始终在正确粒度上计算。"
+      "report_md": "## 防扇出膨胀（Fan-out Trap）专项校验报告\n\n* **核心结论**：2018年8月使用信用卡支付过的有效订单，其对应商品有效 GMV 真实值为 **$ 677,560.52**。\n* **陷阱解析**：在 Olist 数仓中，`order_items`（一单多品）与 `order_payments`（一单分次支付）同属 `orders` 的下游 1:N 明细表。若像常规 Baseline 一样直接三表 `JOIN` 后 `SUM(price)`，会导致金额膨胀至 **$ 682,271.20**（虚高 **+$ 4,710.68 / +0.70%**）。\n* **工程解法**：通过中文 Hybrid RAG 召回《口径8：防扇出规范》，引导 Agent 使用 `WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card')` 实现粒度隔离，一次性精准通过。"
+    },
+    {
+      "id": "clarify_guard",
+      "tag": "CLARIFY · HITL",
+      "tag_color": "indigo",
+      "short_title": "模糊提问主动反问（防盲查）",
+      "question": "帮我看一下最近大盘的销售额怎么样？",
+      "route_name": "CLARIFY（前置网关拦截，Human-in-the-Loop 主动澄清）",
+      "guard_badge": "0 SQL 浪费 · 拒绝口径瞎猜",
+      "meta_stats": "由 Zhipu-Flash 毫秒级拦截 · 下游 SQL/LMDI 算力零消耗",
+      "kpis": [
+        {
+          "label": "网关判定结果",
+          "value": "CLARIFY",
+          "sub": "检测到时间与口径双缺失",
+          "trend": "neutral"
+        },
+        {
+          "label": "拦截潜在口径差",
+          "value": "$ 164,732",
+          "sub": "有效GMV vs 全量含运费毛额",
+          "trend": "down"
+        },
+        {
+          "label": "路由执行模型",
+          "value": "GLM4-Flash",
+          "sub": "极速轻量通道，不耗强模型",
+          "trend": "up"
+        },
+        {
+          "label": "下游 SQL 触发",
+          "value": "0 次",
+          "sub": "澄清前拒绝盲目查库",
+          "trend": "up"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. Gateway 意图体检",
+          "badge": "命中拦截",
+          "badge_color": "green",
+          "desc": "识别到“最近”时间不明且“销售额”口径存在歧义",
+          "log": "[Gateway | Role=fast -> Zhipu-GLM4-Flash]\n路由决策: CLARIFY\n判定理由: 用户提问中的“最近”时间范围模糊，且“销售额”未明确具体口径（如有效GMV、含运费总金额等）。"
+        },
+        {
+          "step": "2. SQL Executor",
+          "badge": "已熔断跳过",
+          "badge_color": "gray",
+          "desc": "在用户确认时间与口径前拒绝盲目生成 SQL",
+          "log": "[System] CLARIFY 路径已直接短路，避免消耗 Qwen Coder 额度或产出错误口径数据。"
+        },
+        {
+          "step": "3. Python LMDI 沙盒",
+          "badge": "已跳过",
+          "badge_color": "gray",
+          "desc": "待用户澄清后按需唤醒",
+          "log": "[System] 算子沙盒待命中。"
+        },
+        {
+          "step": "4. 澄清话术输出",
+          "badge": "HITL 交互",
+          "badge_color": "blue",
+          "desc": "向业务方礼貌追问明确周期与口径选项",
+          "log": "💬 **需要您先确认分析口径与时间范围**：\n\n请问您想查看具体哪一个时间段的销售额呢？另外，销售额的统计口径（如有效GMV还是含运费总金额）是否有特定偏好？"
+        }
+      ],
+      "charts": {
+        "left_title": "为什么必须澄清？2018-08 两种口径金额相差 $ 15.8万！",
+        "left_type": "bar_compare",
+        "compare_data": [
+          {
+            "name": "有效GMV(仅送达/不含运费)",
+            "value": 838576.64,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "毛交易额(全状态/含运费)",
+            "value": 1003308.47,
+            "color": "#F59E0B"
+          }
+        ],
+        "right_title": "数仓近期可用完整月份有效GMV参考 (BRL)",
+        "right_type": "hbar",
+        "hbar_data": [
+          {
+            "name": "2018-04",
+            "value": 973534.09
+          },
+          {
+            "name": "2018-05",
+            "value": 977544.69
+          },
+          {
+            "name": "2018-06",
+            "value": 856077.86
+          },
+          {
+            "name": "2018-07",
+            "value": 867953.46
+          },
+          {
+            "name": "2018-08",
+            "value": 838576.64
+          }
+        ]
+      },
+      "report_md": "💬 **需要您先确认分析口径与时间范围**：\n\n请问您想查看具体哪一个时间段的销售额呢？另外，销售额的统计口径（如有效GMV还是含运费总金额）是否有特定偏好？\n\n---\n**💡 架构设计说明**：若不对模糊提问做前置澄清，直接盲查极易导致口径错位（仅 2018年8月单月，“有效 GMV”与“含运费毛交易额”就相差 **$ 164,731.83**）。V1.5 通过极速轻量模型 `Zhipu-GLM4-Flash` 充当 Gateway，在 1 秒内完成拦截反问，兼顾准确性与 FinOps 成本控制。"
     }
   ]
 };
