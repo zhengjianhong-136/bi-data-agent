@@ -1,4 +1,4 @@
-# Enterprise BI Data Agent：基于异构多 Agent 协作的智能数据分析与归因系统
+# BI Data Agent：基于异构多 Agent 协作的智能数据分析与归因系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange.svg)](https://github.com/langchain-ai/langgraph)
@@ -8,7 +8,7 @@
 
 > 🚀 **[点击在线体验交互式工作台 Demo（零 API 消耗真实轨迹回放）](https://zhengjianhong-136.github.io/bi-data-agent/)**
 
-> **项目定位**：针对传统 BI 取数链路长、常规 Text-to-SQL 在复杂业务语义下准确率低（公平基线仅 **33.3%**，Hard 题仅 **20.0%**）且缺乏严谨归因与幻觉治理的痛点，结合 8 年电商 BI 与异动归因实战经验，基于 **LangGraph + 异构多模型路由 + 中文混合检索 RAG + 确定性 LMDI 沙盒 + 双模防幻觉审计（Hybrid Judge）** 构建企业级智能数据分析 Agent，并将 15 道分层业务评测集准确率从基线 **33.3%** 迭代提升至 **100.0%**。
+> **项目定位**：针对传统 BI 取数链路长、常规 Text-to-SQL 在复杂业务语义下准确率低（公平基线仅 **33.3%**，Hard 题仅 **20.0%**）且缺乏严谨归因与幻觉治理的痛点，本项目基于 **LangGraph + 异构多模型路由 + 中文混合检索 RAG + 确定性 LMDI 沙盒 + 双模防幻觉审计（Hybrid Judge）** 构建企业级智能数据分析 Agent，并将 15 道分层业务评测集准确率从基线 **33.3%** 迭代提升至 **100.0%**。
 
 ---
 
