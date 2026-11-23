@@ -1,108 +1,97 @@
-# BI Data Agent：基于异构多 Agent 协作的智能数据分析与归因系统
+# 📊 BI Data Agent v2.0：基于异构多 Agent 的电商【人·货·场】泛化智能数据分析系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange.svg)](https://github.com/langchain-ai/langgraph)
-[![ChromaDB](https://img.shields.io/badge/RAG-Hybrid_RRF-green.svg)](https://www.trychroma.com/)
-[![Benchmark](https://img.shields.io/badge/15--Q_Benchmark-100.0%25_(Pass%401.13)-brightgreen.svg)]()
-[![Release](https://img.shields.io/badge/Version-v1.5.0-blue.svg)]()
+[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph_MemorySaver-orange.svg)](https://github.com/langchain-ai/langgraph)
+[![SQL Benchmark](https://img.shields.io/badge/15--Q_SQL_Eval-100.0%25_(Pass%401.13)-brightgreen.svg)]()
+[![Routing Benchmark](https://img.shields.io/badge/10--Scene_Routing_Eval-100.0%25-brightgreen.svg)]()
+[![Release](https://img.shields.io/badge/Version-v2.0.0-blue.svg)]()
 
-> 🚀 **[点击在线体验交互式工作台 Demo（零 API 消耗真实轨迹回放）](https://zhengjianhong-136.github.io/bi-data-agent/)**
+> 🚀 **[点击在线体验交互式工作台 Demo（覆盖人·货·场·跨模态评论·边界拒答 6 大真实轨迹回放）](https://zhengjianhong-136.github.io/bi-data-agent/)**
 
-> **项目定位**：针对传统 BI 取数链路长、常规 Text-to-SQL 在复杂业务语义下准确率低（公平基线仅 **33.3%**，Hard 题仅 **20.0%**）且缺乏严谨归因与幻觉治理的痛点，本项目基于 **LangGraph + 异构多模型路由 + 中文混合检索 RAG + 确定性 LMDI 沙盒 + 双模防幻觉审计（Hybrid Judge）** 构建企业级智能数据分析 Agent，并将 15 道分层业务评测集准确率从基线 **33.3%** 迭代提升至 **100.0%**。
+> **项目定位**：从 V1.0 单一异动归因原型一路演进至 **V2.0通用 AI 数据分析**。系统围绕经典电商 **【人、货、场】** 框架，整合 **异构多模型路由、中文混合检索 RAG、独立 Debugger 主动查库排障、6 大确定性 Python 业务算子、AST 安全动态代码沙盒、跨模态葡萄牙语评论 NLP 挖掘、LangGraph 多轮记忆下钻与跨厂商 Hybrid Judge 防幻觉审计**，实现 **15 题分层 SQL 评测 `100.0%`** 与 **10 大分析场景路由 `100.0%`** 双轨满贯。
 
 ---
 
-##  一、 V1.0 → V1.5 量化迭代成果（15 题分层黄金评测集）
+## 🏆 一、 双轨自动化评测成果（V1.0 → V1.5 → V2.0 演进证据）
 
-基于 Olist 真实电商 8 表数仓，构造涵盖 **Easy (L1) / Medium (L2) / Hard (L3)** 的 15 道高含金量业务口径评测题（覆盖有效 GMV、自然人 `customer_unique_id` 去重 UV、AOV/ASP 分母区分、履约延迟率、**一对多防扇出膨胀 Fan-out Trap**、周期复购率 CTE、历史首单老客归因、帕累托 Top3 集中度与跨月双门槛环比）：
+### 1. 轨迹一：15 道分层业务口径 SQL 评测集 (Stratified SQL Benchmark)
+覆盖有效 GMV、自然人 `customer_unique_id` 去重 UV、AOV/ASP 分母隔离、**跨表一对多防扇出膨胀（Fan-out Trap）**、CTE 复购率、历史首单老客归因与帕累托 Top3 集中度：
 
-| 难度等级 | 题目数 | 公平 Baseline<br>*(无口径RAG)* | V1.0<br>*(平权轮询 + 纯向量RAG)* | **V1.5 (Current)**<br>*(异构路由 + 中文混合RAG + Debugger)* | V1.5 平均执行次数 |
+| 难度等级 | 题目数 | 公平 Baseline<br>*(无口径RAG)* | V1.0<br>*(平权轮询 + 纯向量RAG)* | **V1.5 / V2.0**<br>*(异构路由 + 中文混合RAG + Debugger)* | 平均执行次数 |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Easy (L1)** | 5 | 40.0% | 100.0% | **100.0%** | 1.0 |
 | **Medium (L2)** | 5 | 40.0% | 80.0% | **100.0%** | 1.4 |
 | **Hard (L3)** | 5 | 20.0% | 80.0% | **100.0%** | **1.0** |
 | **Overall (总计)** | **15** | **33.3%** | **86.7%** *(1.47次)* | **100.0%** | **1.13** |
 
-### V1.0 → V1.5 核心 Bad Case 归因与工程破局
-* **破局 1（解决 Hard 题漏表报错）**：诊断发现 ChromaDB 默认英文向量模型（`all-MiniLM-L6-v2`）对中文词“英文商品品类”检索失效，导致 `category_translation` 被挤出 Top-9。V1.5 采用 **Schema 物理隔离常驻 + 中文 2-gram 与向量 RRF 混合重排**，Hard 题平均执行次数直接降至 **1.0 次（Pass@1 = 100%）**。
-* **破局 2（消除弱模型方差与 100s 超时黑洞）**：淘汰平权轮询（避免轻量 Flash 模型随机撞上中难 SQL），重构为**基于角色的异构多模型路由器**并引入短超时熔断与体检预冷却。
-* **破局 3（引入独立异构 Debugger Agent）**：Agent A 报错后移交高阶推理模型，配备 `list_all_tables / search_columns / peek_values / scan_all_kb` 四大只读主动探查工具破案重跑，并通过**防投毒静态口径门控**沉淀新经验。
+### 2. 轨迹二：V2.0 全量 10 大分析场景路由评测集 & FinOps 稳定性验证
+* **10 类分析场景路由精准度**：**`100.0% (10/10)`**（精准覆盖 `OUT_OF_SCOPE` 超纲诚实拒答、`CLARIFY` 模糊澄清、`FAST_SQL`、`ATTRIBUTION`、`PEOPLE_GROWTH`、`PEOPLE_RFM`、`GOODS_ANALYSIS`、`SCENE_ANALYSIS`、`REVIEW_INSIGHT`、`ADHOC_EXPLORE`）。
+* **多轮追问下钻 & 审计表现**：基于 `MemorySaver` 跑通两轮跨分析场景指代消解下钻；深度报告实现 **LMDI 分解残差 `0.00`**、**Python 正则数值溯源 `100.0%`**、**跨厂商 Google Gemini 审计忠实度 `5/5`**。
+* **FinOps 异构路由实测**：连续 **41 次跨厂商调用 `0` 失败**，约 **49% 的高频轻量路由与上下文改写请求（20/41 次）** 由轻量免费通道 `Zhipu-GLM4-Flash` 承接，把强推理额度精准留给 `Qwen35B` 与 `Gemini`。
 
 ---
 
-## 二、 V1.5 全闭环系统架构
+## 🏗️ 二、 V2.0 【人·货·场】全闭环泛化架构
 
 ```mermaid
 flowchart TD
     classDef userNode fill:#2B2D42,stroke:#8D99AE,stroke-width:2px,color:#FFFFFF,font-weight:bold;
-    classDef gatewayNode fill:#FFF3CD,stroke:#FFCA2C,stroke-width:2px,color:#664D03,font-weight:bold;
+    classDef gwNode fill:#FFF3CD,stroke:#FFCA2C,stroke-width:2px,color:#664D03,font-weight:bold;
+    classDef sceneNode fill:#CFE2FF,stroke:#0D6EFD,stroke-width:2px,color:#084298,font-weight:bold;
     classDef ragNode fill:#D1E7DD,stroke:#198754,stroke-width:2px,color:#0F5132;
-    classDef agentNode fill:#CFE2FF,stroke:#0D6EFD,stroke-width:2px,color:#084298,font-weight:bold;
-    classDef mathNode fill:#E2D9F3,stroke:#6F42C1,stroke-width:2px,color:#432874,font-weight:bold;
     classDef guardNode fill:#F8D7DA,stroke:#DC3545,stroke-width:2px,color:#842029,font-weight:bold;
 
-    User(["👤 业务方自然语言提问"]):::userNode --> Router{"🚦 0. Gateway 快慢路由<br/>(Zhipu-GLM4-Flash)"}:::gatewayNode
+    User(["👤 业务方多轮自然语言提问"]):::userNode --> Rewriter["🧠 0. MemorySaver 多轮上下文指代消解<br/>(自动补全前序提及品类/省份实体)"]:::gwNode
+    Rewriter --> Router{"🚦 1. V2.0 全量分析场景路由器<br/>(Zhipu-GLM4-Flash)"}:::gwNode
 
-    Router -- "时间/口径缺失" --> Clarify(["💬 CLARIFY 主动反问澄清<br/>(Human-in-the-Loop, 0 SQL)"]):::guardNode
-    Router -- "单点明确查询" --> FastSQL["⚡ FAST_SQL 极速单步查数<br/>(节省 ~75% Token)"]:::agentNode
-    Router -- "复杂异动诊断" --> Planner["🧠 1. Planner Agent<br/>(Qwen3.5-35B 拆解纯中文任务)"]:::agentNode
+    Router -- "缺失字段(如投放渠道/性别)" --> OOS(["🛡️ OUT_OF_SCOPE 诚实拒答<br/>引导可替代分析维度"]):::guardNode
+    Router -- "缺时间/口径模糊" --> Clarify(["💬 CLARIFY 主动反问澄清"]):::guardNode
+    Router -- "单点快查" --> FastSQL["⚡ FAST_SQL<br/>(Actor-Debugger + 混合RAG)"]:::sceneNode
 
-    subgraph SemanticRAG ["📚 企业级分层语义底座"]
-        KB1["🗂️ 8表紧凑 Schema 常驻隔离<br/>(LEFT JOIN 防分母丢失铁律)"]:::ragNode
-        KB2["📏 10大口径 + Golden SQL<br/>(中文 2-gram + 向量 RRF 混合检索)"]:::ragNode
+    subgraph Scenarios ["📦 2. 【大盘 · 人 · 货 · 场 · 跨模态 · 自由探索】分析场景引擎"]
+        S1["📊 大盘 ATTRIBUTION<br/>LMDI 无残差分解 + 长尾降噪"]:::sceneNode
+        S2["👥 人 PEOPLE_GROWTH / RFM<br/>剔除同日拆单复购 + 定制低频RFM"]:::sceneNode
+        S3["📦 货 GOODS_ANALYSIS<br/>首购引流品复购 + 价格带运费负担"]:::sceneNode
+        S4["🏪 场 SCENE_ANALYSIS<br/>分期撬动AOV + 24h峰谷 + 跨州履约"]:::sceneNode
+        S5["🗣️ 跨模态 REVIEW_INSIGHT<br/>剥离物流差评 + 葡萄牙语NLP聚类"]:::sceneNode
+        S6["🔬 自由探索 ADHOC_EXPLORE<br/>AST安全白名单动态Python沙盒"]:::ragNode
     end
 
-    Planner --> SQLExec["🔍 2. Agent A: SQL Generator<br/>(Qwen3.8-27B + 只读安全护栏)"]:::agentNode
-    FastSQL --> SQLExec
-    SemanticRAG -. "上下文注入" .-> SQLExec
-
-    SQLExec --> Sandbox{"🗄️ SQLite 沙盒执行校验"}:::agentNode
-    Sandbox -- "❌ 语法错 / 空表 / 全Null" --> Debugger["🕵️ Agent B: 独立 Debugger<br/>(Qwen3.5-35B + 4大主动查库工具)"]:::gatewayNode
-    Debugger -- "修复重跑 + 防投毒沉淀" --> Sandbox
-
-    Sandbox -- "✅ 提取真实多维数据" --> MathBox["📐 3. Python 确定性数学沙盒<br/>(LMDI 无残差分解=0.00 + <1%长尾降噪)"]:::mathNode
-    MathBox --> Reporter["📝 4. Reporter Agent<br/>(Qwen3.8-27B 撰写商业报告)"]:::agentNode
-    Reporter --> Judge{"⚖️ 5. Hybrid Judge 双模审计<br/>(Python正则溯源 + 异源Google Gemini)"}:::guardNode
-    Judge -- "❌ 发现数值偏差/幻觉 (打回重写)" --> Reporter
-    Judge -- "✅ 溯源100% · 忠实度5/5" --> FinalOut(["📊 高管归因报告与动态轨迹图"]):::userNode
+    Router -- "匹配对应分析场景" --> Scenarios
+    Scenarios --> Reporter["📝 3. Reporter 商业报告撰写<br/>(Qwen3.8-27B · 严禁编造数值)"]:::sceneNode
+    Reporter --> Judge{"⚖️ 4. Hybrid Judge 双模审计<br/>(Python正则硬溯源 + 异源Google Gemini)"}:::guardNode
+    Judge -- "❌ 发现幻觉/溯源不达标 (打回重写)" --> Reporter
+    Judge -- "✅ 溯源100% · 忠实度5/5" --> Mem["💾 5. 浓缩结论写入会话记忆<br/>供下一轮跨场景追问"]:::ragNode
+    Mem --> FinalOut(["📊 输出全中文图表与高管报告"]):::userNode
 ```
 
 ---
 
-## 三、 异构多模型 FinOps 角色分工
-
-摒弃“单一模型包打天下”与“无差别平权轮询”，按子 Agent 能力诉求匹配多厂商模型，并实现**跨厂商异源审计（消除同源模型自夸偏见）**：
-
-| Agent 角色 | 逻辑分组 | 首选模型通道 | 核心设计考量 |
-| :--- | :---: | :--- | :--- |
-| **Gateway 意图网关** | `fast` | `Zhipu-GLM4-Flash` | `<1s` 极速响应、零成本拦截模糊提问与快慢分流 |
-| **SQL Generator (Agent A)** | `coder` | `ModelScope-Qwen3.8-27B` | 中文语义理解与 SQLite 指令遵循极稳，禁止弱模型写复杂 SQL |
-| **Planner & Debugger (Agent B)** | `reasoner` / `debugger` | `ModelScope-Qwen3.5-35B` | 仅在复杂拆解与 SQL 报错时按需触发，配备 4 大探查工具破案 |
-| **Reporter 报告撰写** | `writer` | `ModelScope-Qwen3.8-27B` | 中文商业分析语感自然，严格基于 Python 确定性真值包成文 |
-| **Hybrid Judge 幻觉审计** | `judge` | `Google-Gemini-3.5-Flash` | **跨厂商异源裁判**（Google 审阿里 Qwen），配合正则硬溯源杜绝幻觉 |
-
----
-
-## 四、 仓库目录结构
+## 📂 三、 仓库目录与版本演进轨迹
 
 ```text
 bi-data-agent/
-├── README.md                                 # 项目总览、架构图与量化迭代报告
+├── README.md                                 # 项目全景说明、双轨评测与架构文档
 ├── requirements.txt                          # Python 环境依赖清单
 ├── notebooks/
-│   ├── 01_bi_attribution_agent_v1.ipynb      # V1.0 初始版本（保留演进基线）
-│   └── 02_bi_agent_v1.5_hardened.ipynb       # V1.5 完整闭环加固版（异构路由/LMDI/Hybrid Judge）
-├── docs/                                     # 独立解耦的 GitHub Pages 静态交互工作台
-│   ├── index.html                            # 零构建前端界面 (Tailwind + ECharts)
-│   ├── app.js                                # 轨迹步进重放与图表引擎
-│   └── data/snapshots.js                     # 从 Kaggle 真实数仓导出的 4 场景轨迹快照
-└── assets/                                   # 架构与图表静态资源
+│   ├── 01_bi_attribution_agent_v1.ipynb      # V1.0：初始原型 (8表数仓 + 3层RAG + 归因流)
+│   ├── 02_bi_agent_v1.5_hardened.ipynb       # V1.5：工程加固 (异构路由 + 混合RAG + Debugger + LMDI + Hybrid Judge)
+│   └── 03_general_ai_data_analyst_v2.ipynb   # V2.0：泛化平台 (人·货·场10场景 + 跨模态NLP + AST沙盒 + 多轮记忆)
+├── docs/                                     # 独立解耦的 GitHub Pages 零 API 交互工作台
+│   ├── index.html                            # 零构建静态界面 (Tailwind + ECharts)
+│   ├── app.js                                # V2.0 多图表引擎与步进回放控制
+│   └── data/snapshots.js                     # 从 Kaggle 真实数仓导出的 6 大分析场景快照
+└── assets/                                   # 静态图表素材
 ```
 
 ---
 
-## 五、 迭代路线图 (Roadmap)
+## 🔀 四、 异构多模型 FinOps 角色分工
 
-- [x] **v1.0.0**：8 表本地数仓、10 大核心业务口径、SQL 自纠错、4-Agent 异动归因流与 15 题分层评测集（准确率 `86.7%`）。
-- [x] **v1.5.0 (Current)**：异构多模型 FinOps 路由、Schema 隔离 + 中文 RRF 混合检索、独立 Debugger 主动查库 Agent、确定性 LMDI 无残差分解、Gateway 三路网关、Hybrid Judge 跨厂商审计打回闭环（15 题准确率 **`100.0%`**，报告正则溯源 **`100.0%`**，忠实度 **`5/5`**）。
-- [ ] **v2.0.0 (Planned)**：向泛化商业分析系统（AI Data Analyst）演进——引入多分析范式 Playbook（客户复购留存、RFM 价值分层、非结构化评论 NLP 情感归因）与持久化经验库。
+| Agent 角色 | 逻辑分组 | 首选主力通道 | 核心分工考量 |
+| :--- | :---: | :--- | :--- |
+| **多轮指代消解 & 场景路由** | `fast` | `Zhipu-GLM4-Flash` | 承接近 49% 高频轻量请求，`<1s` 响应且极大节省强模型配额 |
+| **SQL 生成 & 动态沙盒代码** | `coder` | `ModelScope-Qwen3.8-27B` | 中文语义理解与 SQLite/Pandas 指令遵循极稳 |
+| **深度规划 / 排障 / 评论NLP** | `reasoner` / `debugger` | `ModelScope-Qwen3.5-35B` | 按需低频触发，攻克复杂排障取证与葡萄牙语原声主题聚类 |
+| **商业诊断报告撰写** | `writer` | `ModelScope-Qwen3.8-27B` | 中文商业分析语感自然，配合防 MathJax 崩坏清洗输出 |
+| **防幻觉审计裁判** | `judge` | `Google-Gemini-3.5-Flash` | **跨厂商异源审计**（Google 审阿里 Qwen），彻底消除同源偏见 |
