@@ -1,7 +1,7 @@
 window.DEMO_SNAPSHOTS = {
   "project_info": {
-    "title": "BI Data Agent v1.5",
-    "subtitle": "异构多模型 · 混合RAG · Hybrid Judge",
+    "title": "BI Data Agent v2.0",
+    "subtitle": "人·货·场 10大分析场景 · 多轮下钻",
     "benchmark": {
       "overall": "100.0%",
       "easy": "100%",
@@ -36,448 +36,853 @@ window.DEMO_SNAPSHOTS = {
   },
   "scenarios": [
     {
-      "id": "deep_attribution",
-      "tag": "DEEP ATTRIBUTION",
+      "id": "people_growth",
+      "tag": "人 · 复购留存",
       "tag_color": "indigo",
-      "short_title": "2018年8月 vs 7月 大盘异动归因",
-      "question": "对比 2018年7月（2018-07）与 2018年8月（2018-08），分析有效GMV变动的原因，并从量价漏斗、省份区域、英文商品品类维度计算异动贡献度。",
-      "route_name": "SLOW_ATTRIBUTION（异构多Agent + LMDI + Hybrid Judge）",
-      "guard_badge": "正则溯源 100.0% · Gemini 审计 5/5",
-      "meta_stats": "SQL重试 0 次 · LMDI残差 0.0 · 报告生成 1 次",
+      "short_title": "新客首购与客户复购留存分析",
+      "question": "全面分析一下平台的新客首购表现和客户复购留存情况，包括复购间隔窗口和首单体验对复购的影响。",
+      "route_name": "PEOPLE_GROWTH（人 · 新客首购与复购留存分析场景）",
+      "guard_badge": "正则溯源 87.5% · Gemini 审计 5/5",
+      "meta_stats": "覆盖 93,358 去重买家 · 剔除同日拆单口径校验通过",
       "kpis": [
         {
-          "label": "8月有效 GMV",
-          "value": "$ 838,576.64",
-          "sub": "7月基期: $ 867,953.46",
+          "label": "全口径复购率",
+          "value": "3.0%",
+          "sub": "复购用户 2,801 / 总买家 93,358",
           "trend": "neutral"
         },
         {
-          "label": "环比增量 / MoM%",
-          "value": "$ -29,376.82 (-3.38%)",
-          "sub": "有效GMV环比变动",
+          "label": "真实跨期复购率 (>1天)",
+          "value": "2.09%",
+          "sub": "同日拆单(<=1天)占复购 30.45%",
           "trend": "down"
         },
         {
-          "label": "LMDI 单量驱动",
-          "value": "$ +26,190.82",
-          "sub": "订单 6,159 → 6,351 (残差=0)",
-          "trend": "up"
+          "label": "黄金召回中位数 (P50)",
+          "value": "76.8 天",
+          "sub": "跨期首单至二单复购间隔",
+          "trend": "neutral"
         },
         {
-          "label": "LMDI 客单价驱动",
-          "value": "$ -55,567.64",
-          "sub": "AOV $ 140.92 → $ 132.04",
+          "label": "延迟对复购杀伤",
+          "value": "3.04% → 2.52%",
+          "sub": "好评(3.01%) vs 差评(2.93%)",
           "trend": "down"
         }
       ],
       "nodes": [
         {
-          "step": "1. Gateway & Planner",
-          "badge": "Qwen35B",
-          "badge_color": "green",
-          "desc": "Zhipu-Flash 分流 + Qwen35B 拆解 3 路纯中文任务",
-          "log": "[Gateway | Role=fast] 路由决策: SLOW_ATTRIBUTION (用户明确指定了对比时间段（2018-07与2018-08），且核心诉求是分析有效GMV变动原因，要求从量价漏斗、省份区域、英文商品品类维度计算异动贡献度，属于典型的对比归因与多维拆解问题。)\n[Planner | Role=reasoner] 拆解结果 (纯中文任务，严禁越界写SQL):\n[\n  \"查询并对比 2018 年 7 月与 2018 年 8 月的有效 GMV、有效订单数、有效客单价、独立买家 UV 以及履约延迟率等大盘核心指标数据。\",\n  \"下钻分析 2018 年 7 月与 2018 年 8 月各省份区域维度下，头部客户所在州的有效 GMV 与有效订单数变动情况。\",\n  \"统计并对比 2018 年 7 月与 2018 年 8 月头部英文商品品类名称下的有效 GMV 贡献度变化。\"\n]"
-        },
-        {
-          "step": "2. SQL Agent + Debugger",
-          "badge": "重试0次",
-          "badge_color": "teal",
-          "desc": "中文 Hybrid RAG + 只读安全护栏 + 异构排障兜底",
-          "log": "[SQL Executor | Role=coder -> Qwen3.8-27B] Debugger介入: False\n--- 子任务 1: 查询并对比 2018 年 7 月与 2018 年 8 月的有效 GMV、有效订单数、有效客单价、独立买家 UV 以及履约延迟率等大盘核心指标数据。\nSELECT\n  strftime('%Y-%m', o.order_purchase_timestamp) AS stat_month,\n  ROUND(SUM(oi.price), 2) AS valid_gmv,\n  COUNT(DISTINCT o.order_id) AS valid_order_cnt,\n  ROUND(\n    SUM(oi.price) * 1.0 / NULLIF(COUNT(DISTINCT o.order_id), 0),\n    2\n  ) AS valid_aov,\n  COUNT(DISTINCT c.customer_unique_id) AS uv,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN o.order_delivered_customer_date IS NOT NULL\n       AND o.order_estimated_delivery_date IS NOT NULL\n       AND julianday(o.order_delivered_customer_date) - julianday(o.order_estimated_delivery_date) > 0\n      THEN o.order_id\n    END) * 100.0 / NULLIF(COUNT(DISTINCT o.order_id), 0),\n    2\n  ) AS fulfillment_delay_rate\nFROM orders o\nJOIN order_items oi\n  ON o.order_id = oi.order_id\nJOIN customers c\n  ON o.customer_id = c.customer_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\nGROUP BY strftime('%Y-%m', o.order_purchase_timestamp)\nORDER BY stat_month;\n\n--- 子任务 2: 下钻分析 2018 年 7 月与 2018 年 8 月各省份区域维度下，头部客户所在州的有效 GMV 与有效订单数变动情况。\nWITH monthly_customer_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month,\n        c.customer_state,\n        c.customer_unique_id,\n        SUM(oi.price) AS cust_gmv,\n        COUNT(DISTINCT o.order_id) AS cust_orders\n    FROM orders o\n    JOIN customers c ON o.customer_id = c.customer_id\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp), c.customer_state, c.customer_unique_id\n),\nranked_customers AS (\n    SELECT \n        month,\n        customer_state,\n        customer_unique_id,\n        cust_gmv,\n        cust_orders,\n        ROW_NUMBER() OVER (PARTITION BY month, customer_state ORDER BY cust_gmv DESC) AS rnk\n    FROM monthly_customer_gmv\n)\nSELECT \n    rc.month,\n    rc.customer_state,\n    ROUND(SUM(rc.cust_gmv), 2) AS top_customer_valid_gmv,\n    SUM(rc.cust_orders) AS top_customer_valid_orders\nFROM ranked_customers rc\nWHERE rc.rnk <= 10\nGROUP BY rc.month, rc.customer_state\nORDER BY rc.month ASC, top_customer_valid_gmv DESC;\n\n--- 子任务 3: 统计并对比 2018 年 7 月与 2018 年 8 月头部英文商品品类名称下的有效 GMV 贡献度变化。\nWITH monthly_category_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month_str,\n        COALESCE(t.product_category_name_english, 'unknown') AS category_english,\n        SUM(oi.price) AS category_gmv\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    LEFT JOIN products p ON oi.product_id = p.product_id\n    LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp), COALESCE(t.product_category_name_english, 'unknown')\n),\nmonthly_total_gmv AS (\n    SELECT \n        strftime('%Y-%m', o.order_purchase_timestamp) AS month_str,\n        SUM(oi.price) AS total_gmv\n    FROM orders o\n    JOIN order_items oi ON o.order_id = oi.order_id\n    WHERE o.order_status = 'delivered'\n      AND strftime('%Y-%m', o.order_purchase_timestamp) IN ('2018-07', '2018-08')\n    GROUP BY strftime('%Y-%m', o.order_purchase_timestamp)\n),\nranked_categories AS (\n    SELECT \n        mcg.month_str,\n        mcg.category_english,\n        mcg.category_gmv,\n        mtg.total_gmv,\n        ROUND(mcg.category_gmv * 100.0 / mtg.total_gmv, 4) AS gmv_contribution_pct,\n        ROW_NUMBER() OVER (PARTITION BY mcg.month_str ORDER BY mcg.category_gmv DESC) as rk\n    FROM monthly_category_gmv mcg\n    JOIN monthly_total_gmv mtg ON mcg.month_str = mtg.month_str\n)\nSELECT \n    month_str,\n    category_english,\n    ROUND(category_gmv, 2) AS category_gmv,\n    ROUND(total_gmv, 2) AS total_gmv,\n    gmv_contribution_pct,\n    rk AS category_rank\nFROM ranked_categories\nWHERE rk <= 10\nORDER BY month_str, rk;"
-        },
-        {
-          "step": "3. Python LMDI 沙盒",
-          "badge": "残差=0.0",
-          "badge_color": "purple",
-          "desc": "确定性 LMDI 量价分解 + 基期<1%长尾噪音过滤",
-          "log": "### 一、大盘原始指标表 (2018-07 vs 2018-08)\n| ym      |   valid_gmv |   valid_orders |   uv |   delay_rate |\n|:--------|------------:|---------------:|-----:|-------------:|\n| 2018-07 |      867953 |           6159 | 6100 |         4.37 |\n| 2018-08 |      838577 |           6351 | 6310 |        10.35 |\n\n### 二、LMDI 无残差量价分解 (Python 精确计算，残差=0.0)\n{\n  \"gmv_t0\": 867953.46,\n  \"gmv_t1\": 838576.64,\n  \"ord_t0\": 6159,\n  \"ord_t1\": 6351,\n  \"aov_t0\": 140.92,\n  \"aov_t1\": 132.04,\n  \"delta_gmv\": -29376.82,\n  \"mom_pct\": -3.38,\n  \"effect_orders\": 26190.82,\n  \"effect_aov\": -55567.64,\n  \"order_dir_contrib_pct\": 89.15,\n  \"aov_dir_contrib_pct\": -189.15,\n  \"residual\": 0.0\n}\n\n### 三、重点省份异动贡献度 Top 6 (已剔除基期<1%长尾，+为拉动大盘/-为拖累大盘)\n| 省份   |   2018-07GMV |   2018-08GMV |   变动额(Delta) |   环比(%) |   方向贡献度(%) |\n|:-------|-------------:|-------------:|----------------:|----------:|----------------:|\n| SP     |     321647   |    387734    |        66086.5  |     20.55 |          224.96 |\n| BA     |      41869   |     21113.8  |       -20755.2  |    -49.57 |          -70.65 |\n| ES     |      30001.4 |     16447    |       -13554.3  |    -45.18 |          -46.14 |\n| PE     |      24359   |     11648.2  |       -12710.8  |    -52.18 |          -43.27 |\n| PB     |      15188.7 |      7669.63 |        -7519.05 |    -49.5  |          -25.6  |\n| PR     |      45108.9 |     38500.4  |        -6608.55 |    -14.65 |          -22.5  |\n\n### 四、重点英文品类异动贡献度 Top 6 (已剔除基期<1%长尾，+为拉动大盘/-为拖累大盘)\n| 英文品类                        |   2018-07GMV |   2018-08GMV |   变动额(Delta) |   环比(%) |   方向贡献度(%) |\n|:--------------------------------|-------------:|-------------:|----------------:|----------:|----------------:|\n| watches_gifts                   |     95164.8  |     69767.1  |       -25397.7  |    -26.69 |          -86.46 |\n| health_beauty                   |    103524    |    119391    |        15866.8  |     15.33 |           54.01 |\n| telephony                       |     26492.7  |     36572.9  |        10080.2  |     38.05 |           34.31 |\n| garden_tools                    |     25639.9  |     16314.7  |        -9325.18 |    -36.37 |          -31.74 |\n| construction_tools_construction |     15237.5  |     22917.2  |         7679.69 |     50.4  |           26.14 |\n| fixed_telephony                 |      9319.39 |      2724.17 |        -6595.22 |    -70.77 |          -22.45 |"
-        },
-        {
-          "step": "4. Reporter + Hybrid Judge",
-          "badge": "5/5 通过",
-          "badge_color": "blue",
-          "desc": "Qwen写报告 + 正则硬溯源 + 异源Google Gemini审计",
-          "log": "[Reporter | Role=writer] 生成次数: 1\n[Hybrid Judge | Python正则 + Google-Gemini-3.5-Flash 跨厂商审计]:\n{\n  \"faithfulness_score\": 5,\n  \"methodology_score\": 5,\n  \"actionability_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"报告数据与上游真值包完全一致，LMDI量价分解及各维度Top6归因准确无误，无幻觉或逻辑错误。\",\n  \"regex_grounding_pct\": 100.0,\n  \"ungrounded_nums\": []\n}"
-        }
-      ],
-      "charts": {
-        "left_title": "LMDI 无残差量价分解瀑布图 (BRL)",
-        "left_type": "waterfall",
-        "waterfall_data": {
-          "base_label": "7月基期",
-          "base_val": 867953.46,
-          "order_label": "单量驱动",
-          "order_delta": 26190.82,
-          "aov_label": "客单价驱动",
-          "aov_delta": -55567.64,
-          "end_label": "8月当期",
-          "end_val": 838576.64
-        },
-        "right_title": "核心省份 (State) 环比变动贡献 Top 6 (BRL, 已剔除<1%长尾)",
-        "right_type": "hbar",
-        "hbar_data": [
-          {
-            "name": "PR",
-            "value": -6608.55
-          },
-          {
-            "name": "PB",
-            "value": -7519.05
-          },
-          {
-            "name": "PE",
-            "value": -12710.81
-          },
-          {
-            "name": "ES",
-            "value": -13554.32
-          },
-          {
-            "name": "BA",
-            "value": -20755.16
-          },
-          {
-            "name": "SP",
-            "value": 66086.46
-          }
-        ]
-      },
-      "report_md": "# 电商大盘异动归因诊断报告\n\n- **报告日期**：2026-11-20\n- **汇报对象**：业务 VP\n- **分析周期**：2018年7月（2018-07） vs 2018-08（2018-08）\n\n---\n\n## 一、 大盘核心指标总览\n\n2018年8月，大盘有效GMV出现环比回落。现将2018-07与2018-08的核心指标对比呈现如下：\n\n- **有效GMV (valid_gmv)**：由 2018-07 的 867953 下降至 2018-08 的 838577（精确计算：由 867953.46 变动至 838576.64，环比变动幅度为 -3.38%，总变动额 delta_gmv 为 -29376.82）。\n- **有效订单数 (valid_orders)**：由 6159 增长至 6351。\n- **访客数 (uv)**：由 6100 增长至 6310。\n- **延误率 (delay_rate)**：由 4.37% 显著上升至 10.35%。\n\n---\n\n## 二、 量价漏斗模型：LMDI 无残差分解结论\n\n为了准确剥离订单量与客单价对有效GMV变动的具体驱动效应，采用 LMDI 无残差分解法进行归因。分解残差严格为 0.0。具体数值如下：\n\n- **基期与报告期 GMV**：gmv_t0 为 867953.46，gmv_t1 为 838576.64。\n- **订单量与客单价基础数据**：\n  - 订单数：ord_t0 为 6159，ord_t1 为 6351。\n  - 客单价 (aov)：aov_t0 为 140.92，aov_t1 为 132.04。\n- **驱动效应拆解**：\n  - **单量驱动效应 (effect_orders)**：+26190.82，方向贡献度为 89.15%。单量增长对大盘起到了正向拉动作用。\n  - **客单价驱动效应 (effect_aov)**：-55567.64，方向贡献度为 -189.15%。客单价的大幅下滑是拖累大盘 GMV 增长的绝对主因。\n\n---\n\n## 三、 省份区域维度归因分析\n\n剔除基期占比小于 1% 的长尾省份后，重点省份异动贡献度 Top 6 表现如下（+为拉动大盘，-为拖累大盘）：\n\n1. **SP**：2018-07GMV 为 321647，2018-08GMV 为 387734，变动额(Delta)为 66086.5，环比增长 20.55%，方向贡献度为 224.96%（大盘最核心的正向拉动省份）。\n2. **BA**：2018-07GMV 为 41869，2018-08GMV 为 21113.8，变动额(Delta)为 -20755.2，环比下降 -49.57%，方向贡献度为 -70.65%（主要的负向拖累省份）。\n3. **ES**：2018-07GMV 为 30001.4，2018-08GMV 为 16447，变动额(Delta)为 -13554.3，环比下降 -45.18%，方向贡献度为 -46.14%。\n4. **PE**：2018-07GMV 为 24359，2018-08GMV 为 11648.2，变动额(Delta)为 -12710.8，环比下降 -52.18%，方向贡献度为 -43.27%。\n5. **PB**：2018-07GMV 为 15188.7，2018-08GMV 为 7669.63，变动额(Delta)为 -7519.05，环比下降 -49.50%，方向贡献度为 -25.60%。\n6. **PR**：2018-07GMV 为 45108.9，2018-08GMV 为 38500.4，变动额(Delta)为 -6608.55，环比下降 -14.65%，方向贡献度为 -22.50%。\n\n---\n\n## 四、 英文商品品类维度归因分析\n\n剔除基期占比小于 1% 的长尾品类后，重点英文品类异动贡献度 Top 6 表现如下（+为拉动大盘，-为拖累大盘）：\n\n1. **watches_gifts**：2018-07GMV 为 95164.8，2018-08GMV 为 69767.1，变动额(Delta)为 -25397.7，环比下降 -26.69%，方向贡献度为 -86.46%（主要品类拖累项）。\n2. **health_beauty**：2018-07GMV 为 103524，2018-08GMV 为 119391，变动额(Delta)为 15866.8，环比增长 15.33%，方向贡献度为 54.01%（核心正向拉动品类）。\n3. **telephony**：2018-07GMV 为 26492.7，2018-08GMV 为 36572.9，变动额(Delta)为 10080.2，环比增长 38.05%，方向贡献度为 34.31%。\n4. **garden_tools**：2018-07GMV 为 25639.9，2018-08GMV 为 16314.7，变动额(Delta)为 -9325.18，环比下降 -36.37%，方向贡献度为 -31.74%。\n5. **construction_tools_construction**：2018-07GMV 为 15237.5，2018-08GMV 为 22917.2，变动额(Delta)为 7679.69，环比增长 50.40%，方向贡献度为 26.14%。\n6. **fixed_telephony**：2018-07GMV 为 9319.39，2018-08GMV 为 2724.17，变动额(Delta)为 -6595.22，环比下降 -70.77%，方向贡献度为 -22.45%。"
-    },
-    {
-      "id": "fast_path",
-      "tag": "FAST PATH",
-      "tag_color": "emerald",
-      "short_title": "8月有效 GMV 与取消率极速查询",
-      "question": "查询 2018年8月 有效GMV 和订单取消率分别是多少？",
-      "route_name": "FAST_SQL（智谱Flash路由直通单步SQL，跳过重型归因）",
-      "guard_badge": "双口径隔离校验通过",
-      "meta_stats": "SQL重试 0 次 · 节省 ~75% Token 与延迟",
-      "kpis": [
-        {
-          "label": "8月有效 GMV",
-          "value": "$ 838,576.64",
-          "sub": "仅统计 delivered 订单售价",
-          "trend": "neutral"
-        },
-        {
-          "label": "8月订单取消率",
-          "value": "1.29%",
-          "sub": "分母包含全状态下单总量",
-          "trend": "down"
-        },
-        {
-          "label": "路由策略",
-          "value": "FAST_SQL",
-          "sub": "直连 Coder 模型单步出数",
-          "trend": "up"
-        },
-        {
-          "label": "SQL 重试次数",
-          "value": "0 次",
-          "sub": "Hybrid RAG 一次命中",
-          "trend": "up"
-        }
-      ],
-      "nodes": [
-        {
-          "step": "1. Gateway 网关",
+          "step": "1. 多场景路由网关",
           "badge": "Zhipu-Flash",
           "badge_color": "green",
-          "desc": "识别为明确单点查询，秒切快思考流",
-          "log": "[Gateway | Role=fast] 路由决策: FAST_SQL\n理由: 用户提问时间范围明确（2018年8月），且指标明确（有效GMV、订单取消率），属于典型的具体数值查询（What型问题）。"
+          "desc": "精准识别为【人 · PEOPLE_GROWTH】分析场景",
+          "log": "[V2.0 Skill Router | Role=fast -> Zhipu-GLM4-Flash]\n命中分析场景: [PEOPLE_GROWTH]\n边界检查: 全量字段均在 Olist 8表数仓内，准予执行。"
         },
         {
-          "step": "2. SQL Executor",
-          "badge": "Qwen27B",
+          "step": "2. 无扇出底表引擎",
+          "badge": "SQLite 索引",
           "badge_color": "teal",
-          "desc": "自动隔离有效GMV(delivered)与取消率(全量分母)",
-          "log": "[SQL Executor | Role=coder]\nSELECT \n    (SELECT ROUND(SUM(oi.price), 2) \n     FROM orders o \n     JOIN order_items oi ON o.order_id = oi.order_id \n     WHERE o.order_status = 'delivered' \n       AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08') AS effective_gmv,\n    (SELECT SUM(CASE WHEN order_status = 'canceled' THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(DISTINCT order_id) \n     FROM orders \n     WHERE strftime('%Y-%m', order_purchase_timestamp) = '2018-08') AS cancellation_rate;\n\n[返回结果]:\n|   effective_gmv |   cancellation_rate |\n|----------------:|--------------------:|\n|          838577 |             1.28993 |"
+          "desc": "按 natural_id 去重并构建订单顺序排名",
+          "log": "[SQL Base Engine] 已按 customer_unique_id 排序生成 ord_rank，隔离 order_items 与 order_reviews 避免扇出膨胀。"
         },
         {
-          "step": "3. Python LMDI 沙盒",
-          "badge": "按需跳过",
-          "badge_color": "gray",
-          "desc": "快思考路径自动跳过复杂归因算子",
-          "log": "[System] FAST_SQL 路径已跳过 Planner、LMDI 沙盒与重型审计，降低 75% 耗时。"
+          "step": "3. Python 确定性算子",
+          "badge": "同日拆单剥离",
+          "badge_color": "purple",
+          "desc": "区分全口径复购与跨期真实复购，量化体验影响",
+          "log": "全口径复购率: 3.0%\n同日拆单(<=1天)占比: 30.45%\n剔除拆单后真实复购率: 2.09%\n跨期中位数 P50: 76.8 天\n按时送达复购率 3.04% vs 延迟复购率 2.52%"
         },
         {
-          "step": "4. Reporter 简报",
-          "badge": "已交付",
+          "step": "4. Reporter + 异源审计",
+          "badge": "5/5 通过",
           "badge_color": "blue",
-          "desc": "输出精简指标回答与口径说明",
-          "log": "[Reporter | Role=writer] 已输出单点指标简报。"
+          "desc": "Qwen27B 撰写专题报告 + Google Gemini 跨厂商审计",
+          "log": "{\n  \"faithfulness_score\": 5,\n  \"insight_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"报告数字与上游真值包完全一致，未发现幻觉。业务洞察深刻，策略紧密贴合数据指标与分位数特征，逻辑严密，是一份高质量的审计报告。\",\n  \"regex_grounding_pct\": 87.5\n}"
         }
       ],
       "charts": {
-        "left_title": "2018年3月-8月 有效GMV 趋势 (BRL)",
-        "left_type": "bar_simple",
+        "left_title": "首单至二单复购间隔窗口分布 (%)",
+        "left_type": "bar_generic",
+        "left_unit": "%",
         "bar_data": [
           {
-            "name": "2018-03",
-            "value": 953356.25
+            "name": "0-1天(拆单)",
+            "value": 30.45,
+            "color": "#94A3B8"
           },
           {
-            "name": "2018-04",
-            "value": 973534.09
-          },
-          {
-            "name": "2018-05",
-            "value": 977544.69
-          },
-          {
-            "name": "2018-06",
-            "value": 856077.86
-          },
-          {
-            "name": "2018-07",
-            "value": 867953.46
-          },
-          {
-            "name": "2018-08",
-            "value": 838576.64
-          }
-        ],
-        "right_title": "2018年3月-8月 订单取消率走势 (%)",
-        "right_type": "line",
-        "line_data": [
-          {
-            "name": "2018-03",
-            "value": 0.36
-          },
-          {
-            "name": "2018-04",
-            "value": 0.22
-          },
-          {
-            "name": "2018-05",
-            "value": 0.35
-          },
-          {
-            "name": "2018-06",
-            "value": 0.29
-          },
-          {
-            "name": "2018-07",
-            "value": 0.65
-          },
-          {
-            "name": "2018-08",
-            "value": 1.29
-          }
-        ]
-      },
-      "report_md": "2018年8月有效GMV为838,577。该口径按订单状态为delivered的订单，关联订单明细后汇总商品金额。订单取消率为1.28993%。该口径按2018年8月购买订单中状态为canceled的订单数占去重订单总数计算。"
-    },
-    {
-      "id": "anti_fan_out",
-      "tag": "ANTI-FAN-OUT",
-      "tag_color": "amber",
-      "short_title": "信用卡支付 GMV（防扇出膨胀）",
-      "question": "统计 2018年8月 使用信用卡支付过的有效订单对应的商品有效 GMV 总和",
-      "route_name": "Hard Semantic Guard（中文混合RAG命中防扇出规范）",
-      "guard_badge": "IN 子查询粒度隔离通过",
-      "meta_stats": "尝试 1 次 · 成功拦截直接JOIN虚高 +$ 4,710.68",
-      "kpis": [
-        {
-          "label": "信用卡有效 GMV (正确)",
-          "value": "$ 677,560.52",
-          "sub": "IN 子查询粒度隔离",
-          "trend": "up"
-        },
-        {
-          "label": "直接 JOIN 膨胀值 (错误)",
-          "value": "$ 682,271.20",
-          "sub": "一单多笔支付导致重复求和",
-          "trend": "down"
-        },
-        {
-          "label": "成功拦截虚高误差",
-          "value": "+$ 4,710.68",
-          "sub": "相对虚高 +0.70%",
-          "trend": "neutral"
-        },
-        {
-          "label": "SQL 尝试次数",
-          "value": "1 次",
-          "sub": "Hard 题 Pass@1 命中",
-          "trend": "up"
-        }
-      ],
-      "nodes": [
-        {
-          "step": "1. Hybrid RAG 检索",
-          "badge": "词法+向量",
-          "badge_color": "green",
-          "desc": "中文 2-gram 精准召回《口径8：防扇出膨胀规范》",
-          "log": "[Hybrid RAG] 命中核心规范:\n• 口径8：严禁将 order_items 与 order_payments 直接 JOIN 后求和！必须使用 WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments ...)"
-        },
-        {
-          "step": "2. SQL Agent 执行",
-          "badge": "尝试1次",
-          "badge_color": "teal",
-          "desc": "生成安全子查询 SQL 并通过只读校验",
-          "log": "[SQL Executor | Role=coder]\nSELECT ROUND(SUM(oi.price), 2) AS val\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nWHERE o.order_status = 'delivered'\n  AND strftime('%Y-%m', o.order_purchase_timestamp) = '2018-08'\n  AND o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card');\n\n[返回结果]:\n|    val |\n|-------:|\n| 677561 |"
-        },
-        {
-          "step": "3. 防扇出误差对照",
-          "badge": "拦截+0.70%",
-          "badge_color": "purple",
-          "desc": "对比 Naive 直接 Join 产生的笛卡尔积膨胀",
-          "log": "[对照验证]\n正确隔离值: $ 677,560.52\n直接JOIN值: $ 682,271.20\n拦截虚高额: +$ 4,710.68 (+0.70%)"
-        },
-        {
-          "step": "4. 结论输出",
-          "badge": "已溯源",
-          "badge_color": "blue",
-          "desc": "输出防扇出原理解析与支付结构分布",
-          "log": "[Reporter] Hard 级防扇出测试验证通过。"
-        }
-      ],
-      "charts": {
-        "left_title": "防扇出隔离 vs 错误直接JOIN 金额对比 (BRL)",
-        "left_type": "bar_compare",
-        "compare_data": [
-          {
-            "name": "正确值 (IN子查询隔离)",
-            "value": 677560.52,
-            "color": "#10B981"
-          },
-          {
-            "name": "错误值 (直接JOIN膨胀)",
-            "value": 682271.2,
-            "color": "#F43F5E"
-          }
-        ],
-        "right_title": "2018年8月 有效订单各支付方式分布 (订单数)",
-        "right_type": "hbar",
-        "hbar_data": [
-          {
-            "name": "voucher",
-            "value": 179
-          },
-          {
-            "name": "debit_card",
-            "value": 270
-          },
-          {
-            "name": "boleto",
-            "value": 1119
-          },
-          {
-            "name": "credit_card",
-            "value": 4883
-          }
-        ]
-      },
-      "report_md": "## 防扇出膨胀（Fan-out Trap）专项校验报告\n\n* **核心结论**：2018年8月使用信用卡支付过的有效订单，其对应商品有效 GMV 真实值为 **$ 677,560.52**。\n* **陷阱解析**：在 Olist 数仓中，`order_items`（一单多品）与 `order_payments`（一单分次支付）同属 `orders` 的下游 1:N 明细表。若像常规 Baseline 一样直接三表 `JOIN` 后 `SUM(price)`，会导致金额膨胀至 **$ 682,271.20**（虚高 **+$ 4,710.68 / +0.70%**）。\n* **工程解法**：通过中文 Hybrid RAG 召回《口径8：防扇出规范》，引导 Agent 使用 `WHERE o.order_id IN (SELECT DISTINCT order_id FROM order_payments WHERE payment_type = 'credit_card')` 实现粒度隔离，一次性精准通过。"
-    },
-    {
-      "id": "clarify_guard",
-      "tag": "CLARIFY · HITL",
-      "tag_color": "indigo",
-      "short_title": "模糊提问主动反问（防盲查）",
-      "question": "帮我看一下最近大盘的销售额怎么样？",
-      "route_name": "CLARIFY（前置网关拦截，Human-in-the-Loop 主动澄清）",
-      "guard_badge": "0 SQL 浪费 · 拒绝口径瞎猜",
-      "meta_stats": "由 Zhipu-Flash 毫秒级拦截 · 下游 SQL/LMDI 算力零消耗",
-      "kpis": [
-        {
-          "label": "网关判定结果",
-          "value": "CLARIFY",
-          "sub": "检测到时间与口径双缺失",
-          "trend": "neutral"
-        },
-        {
-          "label": "拦截潜在口径差",
-          "value": "$ 164,732",
-          "sub": "有效GMV vs 全量含运费毛额",
-          "trend": "down"
-        },
-        {
-          "label": "路由执行模型",
-          "value": "GLM4-Flash",
-          "sub": "极速轻量通道，不耗强模型",
-          "trend": "up"
-        },
-        {
-          "label": "下游 SQL 触发",
-          "value": "0 次",
-          "sub": "澄清前拒绝盲目查库",
-          "trend": "up"
-        }
-      ],
-      "nodes": [
-        {
-          "step": "1. Gateway 意图体检",
-          "badge": "命中拦截",
-          "badge_color": "green",
-          "desc": "识别到“最近”时间不明且“销售额”口径存在歧义",
-          "log": "[Gateway | Role=fast -> Zhipu-GLM4-Flash]\n路由决策: CLARIFY\n判定理由: 用户提问中的“最近”时间范围模糊，且“销售额”未明确具体口径（如有效GMV、含运费总金额等）。"
-        },
-        {
-          "step": "2. SQL Executor",
-          "badge": "已熔断跳过",
-          "badge_color": "gray",
-          "desc": "在用户确认时间与口径前拒绝盲目生成 SQL",
-          "log": "[System] CLARIFY 路径已直接短路，避免消耗 Qwen Coder 额度或产出错误口径数据。"
-        },
-        {
-          "step": "3. Python LMDI 沙盒",
-          "badge": "已跳过",
-          "badge_color": "gray",
-          "desc": "待用户澄清后按需唤醒",
-          "log": "[System] 算子沙盒待命中。"
-        },
-        {
-          "step": "4. 澄清话术输出",
-          "badge": "HITL 交互",
-          "badge_color": "blue",
-          "desc": "向业务方礼貌追问明确周期与口径选项",
-          "log": "💬 **需要您先确认分析口径与时间范围**：\n\n请问您想查看具体哪一个时间段的销售额呢？另外，销售额的统计口径（如有效GMV还是含运费总金额）是否有特定偏好？"
-        }
-      ],
-      "charts": {
-        "left_title": "为什么必须澄清？2018-08 两种口径金额相差 $ 15.8万！",
-        "left_type": "bar_compare",
-        "compare_data": [
-          {
-            "name": "有效GMV(仅送达/不含运费)",
-            "value": 838576.64,
+            "name": "2-7天",
+            "value": 5.78,
             "color": "#4F46E5"
           },
           {
-            "name": "毛交易额(全状态/含运费)",
-            "value": 1003308.47,
-            "color": "#F59E0B"
+            "name": "8-30天",
+            "value": 14.17,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "31-90天",
+            "value": 17.67,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "91-180天",
+            "value": 14.6,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "180天+",
+            "value": 17.32,
+            "color": "#4F46E5"
           }
         ],
-        "right_title": "数仓近期可用完整月份有效GMV参考 (BRL)",
+        "right_title": "首单体验对后续复购率的影响对比 (%)",
         "right_type": "hbar",
+        "right_unit": "%",
         "hbar_data": [
           {
-            "name": "2018-04",
-            "value": 973534.09
+            "name": "首单差评(1-2分)",
+            "value": 2.93,
+            "color": "#F43F5E"
           },
           {
-            "name": "2018-05",
-            "value": 977544.69
+            "name": "首单履约延迟",
+            "value": 2.52,
+            "color": "#F43F5E"
           },
           {
-            "name": "2018-06",
-            "value": 856077.86
+            "name": "首单按时送达",
+            "value": 3.04,
+            "color": "#10B981"
           },
           {
-            "name": "2018-07",
-            "value": 867953.46
-          },
-          {
-            "name": "2018-08",
-            "value": 838576.64
+            "name": "首单好评(4-5分)",
+            "value": 3.01,
+            "color": "#4F46E5"
           }
         ]
       },
-      "report_md": "💬 **需要您先确认分析口径与时间范围**：\n\n请问您想查看具体哪一个时间段的销售额呢？另外，销售额的统计口径（如有效GMV还是含运费总金额）是否有特定偏好？\n\n---\n**💡 架构设计说明**：若不对模糊提问做前置澄清，直接盲查极易导致口径错位（仅 2018年8月单月，“有效 GMV”与“含运费毛交易额”就相差 **$ 164,731.83**）。V1.5 通过极速轻量模型 `Zhipu-GLM4-Flash` 充当 Gateway，在 1 秒内完成拦截反问，兼顾准确性与 FinOps 成本控制。"
+      "report_md": "# 平台新客首购表现与复购留存深度诊断报告\n\n- **报告日期**：2026-11-23\n- **报告出品**：电商BI商业智能部\n- **核心数据基准**：全口径用户数 93,358 | 全周期GMV 13,221,508.90\n\n---\n\n## 一、 执行摘要 (Executive Summary)\n\n本报告基于平台全生命周期交易与履约行为数据，深度剖析了新客首购表现及客户复购留存现状。核心发现如下：\n\n1. **复购真实性水分挤压**：全口径复购率为 3.00%，但其中 30.45% 的复购由“同日拆单（0-1天内）”贡献。**剔除同日拆单后的真实复购率仅为 2.09%**，反映出实际用户粘性处于较低水平，平台面临严重的“一锤子买卖”困境。\n2. **黄金召回时间窗定位**：真实跨期复购的中位数（P50）为 76.8 天，P25 为 24.2 天，P75 为 179.6 天。运营触达需紧扣 24 天至 77 天的核心窗口期。\n3. **首单体验量化杀伤力**：首单履约延迟对后续复购产生显著的负向冲击，履约延迟用户的后续复购率（2.52%）显著低于按时送达用户（3.04%）。\n\n---\n\n## 二、 新客首购表现与近6个月趋势演进\n\n近6个月（2018-03 至 2018-08）平台持续保持了稳定的大盘新客获取节奏，新客首单贡献了绝对主力 GMV。\n\n| 月份 | 新客首购订单 | 老客复购订单 | 老客订单占比(%) | 新客首单AOV | 老客复购AOV | 老客GMV占比(%) |\n|:---|---:|---:|---:|---:|---:|---:|\n| 2018-03 | 6,774 | 229 | 3.27 | 136.78 | 116.99 | 2.81 |\n| 2018-04 | 6,582 | 216 | 3.18 | 143.72 | 127.72 | 2.83 |\n| 2018-05 | 6,506 | 243 | 3.60 | 145.14 | 136.99 | 3.41 |\n| 2018-06 | 5,878 | 221 | 3.62 | 140.74 | 130.33 | 3.36 |\n| 2018-07 | 5,949 | 210 | 3.41 | 141.46 | 125.71 | 3.04 |\n| 2018-08 | 6,144 | 207 | 3.26 | 132.26 | 125.52 | 3.10 |\n\n**BI 深度洞察**：\n- **获客与客单价**：新客首单 AOV 整体在 132.26 至 145.14 之间波动，且持续高于老客复购 AOV（116.99 至 136.99），表明新客获取阶段多伴随品类尝鲜或首单大额满减补贴。\n- **业务结构失衡**：老客 GMV 占比长期徘徊在 3.0% 左右，单月老客订单占比最高未超过 3.65%。平台高度依赖源源不断的新客输入维持大盘，属于典型的“漏斗上端驱动型”电商模式。\n\n---\n\n## 三、 用户频次分层与复购留存真实全景\n\n### 1. 全口径 vs 真实复购率及频次帕累托验证\n全口径总用户数 93,358 中，全口径复购用户数 2,801（复购率 3.0%）。然而，其中 853 人次属于 <=1 天的同日拆单（占复购比 30.45%）。**剔除同日拆单后的真实复购率被修正为 2.09%**，真实跨期复购平均间隔长达 116.8 天。\n\n| 下单频次分层 | 用户数 | 用户占比(%) | 贡献GMV | GMV占比(%) | 人均GMV |\n|:---|---:|---:|---:|---:|---:|\n| 1单 (单次客) | 90,557 | 97.00 | 12,493,100.00 | 94.49 | 137.96 |\n| 2单 (二次复购) | 2,573 | 2.76 | 631,275.00 | 4.77 | 245.35 |\n| 3单及以上 (高频客) | 228 | 0.24 | 97,133.90 | 0.73 | 426.03 |\n\n**BI 深度洞察（为何放弃传统均分采用定制分层）**：\n- **帕累托极端二八验证**：单次客占比高达 97.00%，贡献了 94.49% 的 GMV。对于这种严重右偏的低频电商，若采用传统的基于等距或四分位的 RFM 均分，绝大多数用户会被挤压在最低分层中失去区分度。\n- 因此，BI 采用**“单次尝鲜 - 二次转化 - 高频忠诚”**的业务本质分层。数据表明，随着频次从 1 单提升至 3 单及以上，人均 GMV 从 137.96 跃升至 426.03（增幅达 208%），证明打通“首单到二单”的转化卡点是提升平台 LTV 的胜负手。\n\n### 2. 复购间隔窗口与黄金召回时间窗\n分析首单至二单的复购时间窗口分布，明确用户的流失与回流节点：\n\n| 复购间隔窗口 | 复购用户数 | 占复购用户比例(%) |\n|:---|---:|---:|\n| 0-1天(同日拆单) | 853 | 30.45 |\n| 2-7天 | 162 | 5.78 |\n| 8-30天 | 397 | 14.17 |\n| 31-90天 | 495 | 17.67 |\n| 91-180天 | 409 | 14.60 |\n| 180天以上 | 485 | 17.32 |\n\n- **统计学分位数窗口**：真实跨期复购的 **P25 为 24.2 天**，**中位数 P50 为 76.8 天**，**P75 为 179.6 天**。\n- **黄金召回时间窗规划**：\n  - **极速唤醒期（0-30天）**：占比合计达 50.40%（含同日拆单）。若扣除同日拆单，8-30 天内完成复购的用户占比 14.17%，此阶段是用户对商品尚有新鲜感时的顺势追购期。\n  - **核心保卫期（31-90天，覆盖 P50 中位数 76.8 天）**：占比 17.67%，是打破用户沉睡的关键窗口。\n  - **长周期唤醒期（91-180天，逼近 P75 179.6 天）**：占比 14.60%，此后用户流失概率陡增。\n\n---\n\n## 四、 首单体验（履约与评价）对复购的量化杀伤力\n\n通过交叉比对首单履约质量和用户评分，量化体验劣化对复购的负面打击。\n\n### 1. 首单履约时效的影响\n| 首单履约状态 | 首单用户数 | 后续复购率(%) |\n|:---|---:|---:|\n| 首单按时送达 | 85,753 | 304.00 (注: 实际复购率为3.04%) |\n| 首单履约延迟 | 7,605 | 2.52 |\n\n*(注：首单按时送达复购率原文为 3.04%，此处修正展现)*\n- **量化杀伤力**：首单履约延迟导致后续复购率从 3.04% 下跌至 2.52%，相对降幅达到 **17.1%**。物流履约时效是摧毁新客信任的第一杀手。\n\n### 2. 首单评价分组的影响\n| 首单评价分组 | 首单用户数 | 后续复购率(%) |\n|:---|---:|---:|\n| 首单差评(1-2分) | 11,936 | 2.93 |\n| 首单中评(3分) | 7,670 | 3.00 |\n| 首单好评(4-5分) | 73,137 | 3.01 |\n\n- **洞察**：出人意料的是，首单差评组（1-2分）的后续复购率（2.93%）与好评组（3.01%）差异微弱。这表明平台新客整体基数复购率偏低，差评用户的流失更多通过隐性口碑（不推荐）扩散，而非直接体现在单店复购数字的断崖上，但也暴露出客服客诉补偿机制亟待前置。\n\n---\n\n## 五、 差异化 CRM 运营与落地策略建议\n\n针对上述数据洞察，为业务团队提供分层、分场景的精准运营策略：\n\n### 1. 针对“活跃高价值新客”（完成首单且处于 0-30 天黄金窗内）\n- **触达动作**：在首单签收后第 3 天和第 7 天，通过 App Push 与短信组合拳，精准推送同品类关联配件或凑单优惠券（如满 100 减 20 券），利用首单余温推动其在 P25（24.2天）前完成二次转化，将 2.76% 的二次复购率盘活。\n\n### 2. 针对“高价值流失预警客”（接近 P50 中位数 76.8 天及 91-180 天长周期客）\n- **触达动作**：针对超过 60 天未复购且首单客单价高于大盘均值（140）的用户，启动“唤醒专项权益包”。通过大额无门槛回归红包或专属客服关怀触达，在 P75（179.6天）防线崩溃前实现召回。\n\n### 3. 供应链与履约底线治理\n- 严控新客首单的履约准时率。鉴于履约延迟对复购率造成超 17% 的负向打击，建议针对新客订单打上“黄金首单”电子标签，在仓储配载和快递路由上给予优先保障，从源头减少因延迟导致的隐性客源流失。"
+    },
+    {
+      "id": "people_rfm",
+      "tag": "人 · RFM分层",
+      "tag_color": "purple",
+      "short_title": "定制低频 RFM 分层与行为画像",
+      "question": "对平台客户做一次 RFM 价值分层，并分析高价值客群的地域、品类与支付分期行为画像。",
+      "route_name": "PEOPLE_RFM（人 · 定制低频 RFM 与行为画像分析场景）",
+      "guard_badge": "正则溯源 90.3% · Gemini 审计 5/5",
+      "meta_stats": "Top 20%用户贡献 56.62% GMV · 适配 97% F=1 分布定制切分",
+      "kpis": [
+        {
+          "label": "去重买家总数",
+          "value": "93,358",
+          "sub": "基准快照日期 2018-08-30",
+          "trend": "neutral"
+        },
+        {
+          "label": "帕累托二八验证",
+          "value": "56.62%",
+          "sub": "Top 20% 高消费买家贡献 GMV 占比",
+          "trend": "up"
+        },
+        {
+          "label": "高价值门槛 (M_P75)",
+          "value": "154.74",
+          "sub": "前 25% 高消费客群金额分界线",
+          "trend": "neutral"
+        },
+        {
+          "label": "高价值流失预警占比",
+          "value": "46.4%",
+          "sub": "仅 18.7% 用户，核心唤醒靶点",
+          "trend": "down"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. 多场景路由网关",
+          "badge": "Zhipu-Flash",
+          "badge_color": "green",
+          "desc": "精准路由至【人 · PEOPLE_RFM】分析场景",
+          "log": "[V2.0 Skill Router] 命中分析场景: [PEOPLE_RFM]"
+        },
+        {
+          "step": "2. 定制低频 RFM 算子",
+          "badge": "6大客群",
+          "badge_color": "teal",
+          "desc": "放弃机械均分，按 F=1/F>=2 × R90天 × M_P75 分层",
+          "log": "| seg            |     u |   u_pct |   m_pct |\n|:---------------|------:|--------:|--------:|\n| 核心高价值复购 |  1679 |     1.8 |     4.7 |\n| 潜力成长复购   |  1122 |     1.2 |     0.8 |\n| 活跃高价值新客 |  4208 |     4.5 |    11.4 |\n| 高价值流失预警 | 17453 |    18.7 |    46.4 |\n| 活跃普通新客   | 13637 |    14.6 |     7.3 |\n| 一般沉睡低频   | 55259 |    59.2 |    29.4 |"
+        },
+        {
+          "step": "3. 行为与支付画像",
+          "badge": "无人口属性",
+          "badge_color": "purple",
+          "desc": "提取高价值人群地域、英文品类及信用卡分期偏好",
+          "log": "高价值门槛 M_P75: 154.74\nTop 20% 用户贡献 GMV: 56.62%\n高价值客群偏好 Top 5 品类已计算完成。"
+        },
+        {
+          "step": "4. Reporter + 异源审计",
+          "badge": "5/5 通过",
+          "badge_color": "blue",
+          "desc": "生成差异化 CRM 运营策略并通过 Gemini 异源审计",
+          "log": "{\n  \"faithfulness_score\": 5,\n  \"insight_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"报告对上游真值包中的所有核心数据（用户数、GMV占比、RFM明细、支付与地理及品类偏好）进行了完美复核，无任何数字或事实性幻觉。业务洞察深刻，策略紧密贴合数据表现，是一份高质量的专业专题分析报告。\",\n  \"regex_grounding_pct\": 90.3\n}"
+        }
+      ],
+      "charts": {
+        "left_title": "定制 RFM 6大客群：用户占比 vs GMV占比 (%)",
+        "left_type": "grouped_bar",
+        "left_unit": "%",
+        "categories": [
+          "核心高价值复购",
+          "潜力成长复购",
+          "活跃高价值新客",
+          "高价值流失预警",
+          "活跃普通新客",
+          "一般沉睡低频"
+        ],
+        "series": [
+          {
+            "name": "用户占比(%)",
+            "color": "#94A3B8",
+            "data": [
+              1.8,
+              1.2,
+              4.5,
+              18.7,
+              14.6,
+              59.2
+            ]
+          },
+          {
+            "name": "GMV占比(%)",
+            "color": "#4F46E5",
+            "data": [
+              4.7,
+              0.8,
+              11.4,
+              46.4,
+              7.3,
+              29.4
+            ]
+          }
+        ],
+        "right_title": "高价值客群偏好 Top 5 英文品类 GMV 占比 (%)",
+        "right_type": "hbar",
+        "right_unit": "%",
+        "hbar_data": [
+          {
+            "name": "bed_bath_table",
+            "value": 5.93,
+            "color": "#6366F1"
+          },
+          {
+            "name": "computers_accessories",
+            "value": 6.38,
+            "color": "#6366F1"
+          },
+          {
+            "name": "sports_leisure",
+            "value": 6.59,
+            "color": "#6366F1"
+          },
+          {
+            "name": "health_beauty",
+            "value": 9.58,
+            "color": "#6366F1"
+          },
+          {
+            "name": "watches_gifts",
+            "value": 11.06,
+            "color": "#6366F1"
+          }
+        ]
+      },
+      "report_md": "# 平台客户 RFM 价值分层与高价值客群全景画像专题分析报告\n\n报告日期：2026-11-23  \n报告出品：商业数据智能中心（BI）\n\n---\n\n## 一、 执行摘要 (Executive Summary)\n\n本报告基于平台截至 2018-08-30 的全量交易快照数据（覆盖去重买家总数 93,358 名），针对低频电商业务形态，打破传统电商千篇一律的均分 RFM 模型，创新构建了“基于消费频次与消费金额门槛（M_P75 = 154.74）”的定制化 6 大客群分层体系。\n\n核心结论与业务洞察提炼如下：\n1. 帕累托效应验证：通过二八法则验证，平台 Top 25% 的高价值人群贡献了核心 GMV。传统低频电商用户复购周期长，若套用高频电商均分模型会导致客群极度失真，定制化分层能更精准锁定高价值资产。\n2. 存量资产风险：高价值客群中，高达 18.69% 的用户属于“高价值流失预警客”（F=1, R>90, 高M），其贡献了平台 46.43% 的 GMV。如何唤醒这部分沉睡的高价值大单新客，是当前 CRM 运营的生死命脉。\n3. 支付与体验画像：高价值人群相比普通消费人群展现出极高的客单价（354.22 vs 70.75）、更高的信用卡渗透率（82.04%）以及更长的分期期数（5.26 期），但其差评率也相对偏高（15.93% vs 12.01%），提示我们在追求高客单时必须协同供应链严控履约质量。\n\n---\n\n## 二、 建模方法论与低频电商定制 RFM 逻辑\n\n### 2.1 为何放弃传统均分，采用定制分层？\n在传统零售与高频电商场景中，RFM 模型多采用分位数均分（如 5 等分打分法）。然而，针对垂直或低频电商平台，绝大多数用户终身仅发生 1 次交易（即 F=1 占绝大多数），若使用传统均分会导致大批低频但客单价较高的用户被混为一谈，无法识别其真实商业价值。\n\n因此，本次建模以消费金额 M 的 P75 分位点（154.74）作为高价值分界线，并将消费频次 F 划分为单次交易（F=1）与多次复购（F>=2），最终组合衍生出 6 大定制 RFM 客群，兼顾了用户的“活跃度”、“忠诚度”与“消费力”。\n\n### 2.2 帕累托二八验证\n数据快照显示，平台高价值门槛 M_P75 为 154.74，消费中位数 M_P50 为 89.73。经帕累托二八验证，Top 20% 的用户贡献了 56.62% 的 GMV，验证了平台大盘存在明显的头部效应。锁定 Top 25% 的高价值人群（共计 23,340 人），即等于抓住了平台近六成的营收命脉。\n\n---\n\n## 三、 6 大定制 RFM 客群分层全景解码\n\n通过对 93,358 名去重买家进行定制化打标，各客群分布与核心指标明细如下：\n\n| RFM客群分层 | 用户数 | 用户占比(%) | GMV占比(%) | 平均R天数 | 平均F频次 | 人均消费 | 差评率(%) |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| 1.核心高价值复购客(F>=2,高M) | 1,679 | 1.80 | 4.69 | 211.9 | 2.16 | 369.09 | 21.92 |\n| 2.潜力成长复购客(F>=2,中低M) | 1,122 | 1.20 | 0.82 | 232.9 | 2.05 | 96.88 | 15.24 |\n| 3.活跃高价值新客(F=1,R<=90,高M) | 4,208 | 4.51 | 11.41 | 45.8 | 1.00 | 358.58 | 12.43 |\n| 4.高价值流失预警客(F=1,R>90,高M) | 17,453 | 18.69 | 46.43 | 287.0 | 1.00 | 351.73 | 16.20 |\n| 5.活跃普通新客(F=1,R<=90,中低M) | 13,637 | 14.61 | 7.29 | 44.6 | 1.00 | 70.70 | 8.98 |\n| 6.一般沉睡低频客(F=1,R>90,中低M) | 55,259 | 59.19 | 29.36 | 285.7 | 1.00 | 70.24 | 12.69 |\n\n空行\n\n客群结构深度洞察：\n* 核心基本盘：一般沉睡低频客（第6类）虽然人数占比高达 59.19%，但人均消费仅有 70.24，属于长尾基础盘。\n* 营收压舱石：第 4 类“高价值流失预警客”人数占比虽仅为 18.69%，却独占了 46.43% 的 GMV 蛋糕。这部分用户首单贡献了极高金额（人均 351.73），但 R 值已经超过 90 天，处于严重的流失边缘。\n\n---\n\n## 四、 高价值客群地域、品类与支付行为全景画像\n\n为了深入剖析这群贡献了核心 GMV 的 Top 25% 高价值人群（23,340 人），我们从支付习惯、地域分布、品类偏好三个维度进行透视。\n\n### 4.1 支付分期与评价行为差异\n将高价值人群与普通消费人群（Bottom 75%）进行交叉对比，结果如下：\n\n| 消费价值层级 | 用户数 | 人均消费 | 信用卡渗透率(%) | 信用卡平均分期数 | Boleto占比(%) | 差评率(%) |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| 普通消费人群(Bottom75%) | 70,018 | 70.75 | 75.52 | 2.84 | 21.22 | 12.01 |\n| 高价值人群(Top25%) | 23,340 | 354.22 | 82.04 | 5.26 | 16.54 | 15.93 |\n\n空行\n\n支付画像洞察：\n* 金融杠杆依赖：高价值人群的人均消费（354.22）是普通人群的 5 倍。他们在支付时对信用卡的依赖度更高（渗透率 82.04% vs 75.52%），且倾向于更长周期的资金周转（平均分期数高达 5.26 期，远高于普通人群的 2.84 期）。\n* 体验敏感度：高价值人群的差评率达到 15.93%，显著高于普通人群的 12.01%。这说明高客单价用户对商品品质、物流时效的心理预期更高，一旦履约出现瑕疵，极易产生负面反馈。\n\n### 4.2 地域分布 Top 5\n高价值用户在地理空间上的集中度极高，主要分布在经济发达的东南沿海及工业重镇省份：\n\n| 客户省份 | 高价值用户数 | 占高价值群体(%) |\n| :--- | :--- | :--- |\n| SP | 8,785 | 37.64 |\n| RJ | 3,144 | 13.47 |\n| MG | 2,723 | 11.67 |\n| RS | 1,314 | 5.63 |\n| PR | 1,142 | 4.89 |\n\n空行\n\n地域洞察：仅 SP（圣保罗州）一地就聚集了超过 37% 的高价值用户，联合 RJ（里约热内卢州）和 MG（米纳斯吉拉斯州）三大核心州，其高价值用户占比超过 62%。物流仓储网络应当向这三大核心省份倾斜，以保障大单用户的配送体验。\n\n### 4.3 核心偏好品类 Top 5\n高价值客群在品类选择上呈现出明显的悦己消费与品质生活特征：\n\n| 高价值客群偏好品类 | 贡献GMV | 占高价值GMV(%) |\n| :--- | :--- | :--- |\n| watches_gifts | 914,510 | 11.06 |\n| health_beauty | 791,919 | 9.58 |\n| sports_leisure | 545,100 | 6.59 |\n| computers_accessories | 527,816 | 6.38 |\n| bed_bath_table | 489,979 | 5.93 |\n\n空行\n\n品类洞察：手表礼品类（watches_gifts）与健康美妆类（health_beauty）占据高价值 GMV 的前两名，合计占比超过 20%。高价值客群更愿意为彰显个人品味、提升生活品质的非刚需品类支付高额溢价。\n\n---\n\n## 五、 差异化 CRM 精细化运营动作指南\n\n基于上述数据洞察，针对不同价值密度的客群，建议执行以下差异化运营策略：\n\n### 1. 针对“活跃高价值新客”（第 3 类，4,208 人，占比 4.51%，GMV 占 11.41%）\n* 资产定位：黄金成长期，具有极强的复购潜力。\n* 运营动作：\n  - 黄金时间窗关怀：由于其平均 R 天数仅为 45.8 天，应在首单成交后的第 30 天内通过 Push/短信推送品类满减券或同类目新品推荐，将其引导转化维护为“核心高价值复购客”。\n  - 金融工具助推：鉴于高价值客群偏好长分期，可在结算页主动推送信用卡免息分期权益，降低其再次大额消费的心理门槛。\n\n### 2. 针对“高价值流失预警客”（第 4 类，17,453 人，占比 18.69%，GMV 占 46.43%）\n* 资产定位：平台最大的沉默金矿，流失风险极高（平均 R 达 287 天）。\n* 运营动作：\n  - 唤醒专项作战：启动专属召回通道，通过定向邮件或短信发放高额无门槛品类券（定向覆盖其曾经偏好的 watches_gifts 与 health_beauty 品类）。\n  - 体验修复与调研：考虑到该群体历史差评率较高（16.20%），在召回触达时可附带客服专属关怀或“老客回流体验金”，排查并化解其历史履约不满意的心结。\n\n### 3. 针对地域与供应链的协同动作\n* 物流履约保障：针对 SP、RJ、MG 三大高价值用户集中省份（占 62.78%），在旺季或大促期间应优先配置本地仓或优质快递渠道，确保时效，从源头上压降高价值用户的差评率。"
+    },
+    {
+      "id": "goods_analysis",
+      "tag": "货 · 货盘价格带",
+      "tag_color": "emerald",
+      "short_title": "首购引流品、热度与价格带运费",
+      "question": "分析一下平台货盘表现：哪些品类最适合做首购引流且复购高？商品热度集中度和价格带、运费负担分布如何？",
+      "route_name": "GOODS_ANALYSIS（货 · 首购引流品与价格带结构分析场景）",
+      "guard_badge": "正则溯源 100.0% · Gemini 审计 5/5",
+      "meta_stats": "覆盖 110,197 有效件次 · 用户×品类去重防加权膨胀",
+      "kpis": [
+        {
+          "label": "第一首购拉新品类",
+          "value": "bed_bath_table",
+          "sub": "首购拉新 8,824 人",
+          "trend": "up"
+        },
+        {
+          "label": "低价带(0-50)运费比",
+          "value": "46.9%",
+          "sub": "运费占商品售价比极高，核心痛点",
+          "trend": "down"
+        },
+        {
+          "label": "主力GMV价格带",
+          "value": "100-200",
+          "sub": "贡献全盘 28.6% 有效GMV",
+          "trend": "up"
+        },
+        {
+          "label": "高价带(500+)运费比",
+          "value": "5.1%",
+          "sub": "运费负担显著摊薄",
+          "trend": "up"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. 多场景路由网关",
+          "badge": "Zhipu-Flash",
+          "badge_color": "green",
+          "desc": "精准路由至【货 · GOODS_ANALYSIS】分析场景",
+          "log": "[V2.0 Skill Router] 命中分析场景: [GOODS_ANALYSIS]"
+        },
+        {
+          "step": "2. 首购品去重引擎",
+          "badge": "防加权膨胀",
+          "badge_color": "teal",
+          "desc": "用户首单与品类去重计算真实后续复购转化",
+          "log": "| cat                   |   cnt |   rep_rate |\n|:----------------------|------:|-----------:|\n| bed_bath_table        |  8824 |       4.47 |\n| health_beauty         |  8391 |       2.73 |\n| sports_leisure        |  7235 |       3.87 |\n| computers_accessories |  6318 |       2.9  |\n| furniture_decor       |  6015 |       4.69 |\n| housewares            |  5552 |       2.7  |"
+        },
+        {
+          "step": "3. 价格带与运费算子",
+          "badge": "5档分层",
+          "badge_color": "purple",
+          "desc": "拆解各价格带件数/GMV占比与运费负担比",
+          "log": "价格带: ['0-50', '50-100', '100-200', '200-500', '500+']\n件数占比%: [35.0, 29.4, 23.9, 8.9, 2.8]\nGMV占比%: [9.2, 18.4, 28.6, 22.1, 21.7]\n运费占货价比%: [46.9, 23.8, 16.1, 10.1, 5.1]"
+        },
+        {
+          "step": "4. Reporter + 异源审计",
+          "badge": "5/5 通过",
+          "badge_color": "blue",
+          "desc": "输出货盘与包邮门槛策略并通过异源审计",
+          "log": "{\n  \"faithfulness_score\": 5,\n  \"insight_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"待审计报告完全忠实于真值包，所有数据（品类数、SKU数、帕累托占比、各品类首购及复购率、热销品类全量指标、价格带结构指标）均与真值表严格一致，未发现任何幻觉或篡改，商业洞察切中业务痛点。\",\n  \"regex_grounding_pct\": 100.0\n}"
+        }
+      ],
+      "charts": {
+        "left_title": "各价格带销量占比 vs GMV占比 vs 运费占货价比 (%)",
+        "left_type": "grouped_bar",
+        "left_unit": "%",
+        "categories": [
+          "0-50",
+          "50-100",
+          "100-200",
+          "200-500",
+          "500+"
+        ],
+        "series": [
+          {
+            "name": "件数占比(%)",
+            "color": "#94A3B8",
+            "data": [
+              35.0,
+              29.4,
+              23.9,
+              8.9,
+              2.8
+            ]
+          },
+          {
+            "name": "GMV占比(%)",
+            "color": "#4F46E5",
+            "data": [
+              9.2,
+              18.4,
+              28.6,
+              22.1,
+              21.7
+            ]
+          },
+          {
+            "name": "运费占货价比(%)",
+            "color": "#F43F5E",
+            "data": [
+              46.9,
+              23.8,
+              16.1,
+              10.1,
+              5.1
+            ]
+          }
+        ],
+        "right_title": "头部首购拉新品类：后续复购转化率 (%)",
+        "right_type": "hbar",
+        "right_unit": "%",
+        "hbar_data": [
+          {
+            "name": "housewares",
+            "value": 2.7,
+            "color": "#10B981"
+          },
+          {
+            "name": "furniture_decor",
+            "value": 4.69,
+            "color": "#10B981"
+          },
+          {
+            "name": "computers_accessories",
+            "value": 2.9,
+            "color": "#10B981"
+          },
+          {
+            "name": "sports_leisure",
+            "value": 3.87,
+            "color": "#10B981"
+          },
+          {
+            "name": "health_beauty",
+            "value": 2.73,
+            "color": "#10B981"
+          },
+          {
+            "name": "bed_bath_table",
+            "value": 4.47,
+            "color": "#10B981"
+          }
+        ]
+      },
+      "report_md": "# 平台货盘表现与结构诊断专题报告\n\n报告日期：2026-11-23  \n发布部门：电商商业分析部  \n报告对象：核心管理层、品类运营及供应链团队  \n\n---\n\n## 一、 执行摘要\n\n本报告基于平台最新的全盘经营与货盘数据（涵盖 72 个有效动销英文品类、32216 个有效动销 SKU），深入剖析了平台的货盘集中度、首购拉新与复购表现、热销品类特征以及价格带与运费结构。\n\n核心发现表明：\n1. **高度集中性**：平台呈现出典型的二八定律，Top 20% 的品类与 SKU 贡献了约 75% 的 GMV。\n2. **拉新与复购分化**：`bed_bath_table` 与 `furniture_decor` 兼具高首购拉新与相对较高的复购率，是优质的“引流+留存”双效品类。\n3. **价格与运费痛点突出**：低价带（0-50）销量占比高达 34.96%，但其运费占货价比高达 46.91%，且伴随着高差评率，严重制约了低价货盘的健康度与用户体验。\n\n---\n\n## 二、 货盘集中度与帕累托二八验证\n\n平台整体动销盘口规模适中，但资源头部集中效应显著：\n- 共有有效动销英文品类总数 72 个，有效动销 SKU 总数 32216 个。\n- **帕累托二八验证**：帕累托_Top20%品类贡献GMV占比(%)为 74.31%，帕累托_Top20%SKU贡献GMV占比(%)为 74.82%。\n\n**商业洞察**：平台整体 GMV 高度依赖头部少数精选 SKU 和核心品类。长尾货盘动销贡献较弱，需在日常运营中采取“抓大放小”策略：一方面强化头部标品的供应链与流量倾斜，另一方面对低效、零动销的长尾 SKU 进行清理与盘活。\n\n---\n\n## 三、 首购引流主力与复购表现分析\n\n为了寻找最具拉新效率且能沉淀长期价值的品类，对首购拉新人数 Top 8 的品类及其后续复购率进行了交叉分析：\n\n| 英文品类              |   首购拉新人数 |   后续复购率(%) |\n|:----------------------|---------------:|----------------:|\n| bed_bath_table        |           8824 |            4.47 |\n| health_beauty         |           8391 |            2.73 |\n| sports_leisure        |           7235 |            3.87 |\n| computers_accessories |           6318 |            2.9  |\n| furniture_decor       |           6015 |            4.69 |\n| housewares            |           5552 |            2.7  |\n| watches_gifts         |           5336 |            2.14 |\n| telephony             |           4006 |            2.4  |\n\n**商业洞察与品类筛选**：\n- **首购引流王**：`bed_bath_table`（8824人）与 `health_beauty`（8391人）是平台最强的前端获客引擎。\n- **黄金复购品类（引流+留存双优）**：`furniture_decor`（复购率 4.69%，首购 6015人）与 `bed_bath_table`（复购率 4.47%，首购 8824人）不仅拉新能力拔尖，其后续复购表现也显著高于大盘平均线。\n- **高拉新低复购品类**：`health_beauty` 拥有 8391 的庞大拉新规模，但复购率仅为 2.73%。说明该品类适合作为“一次性爆款”拉新工具，但必须通过跨品类券、会员体系或高频消耗品关联组合，才能有效拉动其长期留存。\n\n---\n\n## 四、 全盘热销英文品类特征透视\n\n观察全盘销售额贡献最大的前 8 大品类，其规模、单价及连带表现如下：\n\n| 英文品类              |   有效订单数 |   销售件数 |          有效GMV |   件单价ASP |   连带率UPT |   GMV占比(%) |\n|:----------------------|-------------:|-----------:|-----------------:|------------:|------------:|-------------:|\n| health_beauty         |         8647 |       9465 |      1.23313e+06 |      130.28 |        1.09 |         9.33 |\n| watches_gifts         |         5495 |       5859 |      1.16618e+06 |      199.04 |        1.07 |         8.82 |\n| bed_bath_table        |         9272 |      10953 |      1.02343e+06 |       93.44 |        1.18 |         7.74 |\n| sports_leisure        |         7530 |       8431 |         954853   |      113.25 |        1.12 |         7.22 |\n| computers_accessories |         6530 |       7644 |         888725   |      116.26 |        1.17 |         6.72 |\n| furniture_decor       |         6307 |       8160 |         711928   |       87.25 |        1.29 |         5.38 |\n| housewares            |         5743 |       6795 |         615629   |       90.6  |        1.18 |         4.66 |\n| cool_stuff            |         3559 |       3718 |         610204   |      164.12 |        1.04 |         4.62 |\n\n**核心特征分析**：\n1. **GMV顶梁柱**：`health_beauty`（GMV占比 9.33%）和 `watches_gifts`（GMV占比 8.82%）贡献了最高的销售额，其中 `watches_gifts` 的件单价ASP高达 199.04，是典型的中高端高客单拉动引擎。\n2. **客单价与连带率杠杆**：`furniture_decor` 虽然单价较低（ASP 87.25），但其连带率UPT高达 1.29，表现出极强的组合销售与套装打包潜力；`bed_bath_table` 同样具备高订单数（9272）与较高连带率（1.18）。\n\n---\n\n## 五、 价格带结构、运费负担与差评率深析\n\n平台不同价格区间的销量、GMV、物流成本及用户满意度分布差异巨大：\n\n| 价格带               |   销售件数 |   件数占比(%) |     有效GMV |   GMV占比(%) |   平均运费 |   运费占货价比(%) |   差评率(%) |\n|:---------------------|-----------:|--------------:|------------:|-------------:|-----------:|------------------:|------------:|\n| 0-50 (低价带)        |      38530 |         34.96 | 1.21225e+06 |         9.17 |      14.76 |             46.91 |       14.94 |\n| 50-100 (中低价带)    |      32376 |         29.38 | 2.43292e+06 |        18.4  |      17.88 |             23.8  |       15.26 |\n| 100-200 (主力中价带) |      26356 |         23.92 | 3.78503e+06 |        28.63 |      23.08 |             16.07 |       14.23 |\n| 200-500 (中高价带)   |       9845 |          8.93 | 2.9265e+06  |        22.13 |      30.07 |             10.12 |       14.35 |\n| 500以上 (高价带)     |       3090 |          2.8  | 2.8648e+06  |        21.67 |      47.35 |              5.11 |       15.52 |\n\n**关键结构性痛点**：\n1. **低价带运费畸高（核心痛点）**：0-50 低价带贡献了 34.96% 的销售件数（38530件），但其平均运费高达 14.76，**运费占货价比竟然高达 46.91%**。这意味着用户买一件 30 的商品需要支付近 15 的运费，极易产生“运费比商品贵”的心理落差，直接推高了低价带的客诉与差评。\n2. **GMV 核心盘稳固在主力中价带**：100-200 价格带是平台的绝对营收支柱，贡献了 28.63% 的 GMV（3.78503e+06），且运费占货价比回落至 16.07%，财务模型较为健康。\n3. **差评率整体平稳但结构性风险存在**：各价格带差评率均在 14% - 15.5% 区间波动。特别是 500 以上高价带差评率达到 15.52%，高单价商品的品质期望与实际履约存在一定预期剪刀差。\n\n---\n\n## 六、 落地业务策略与行动建议\n\n基于上述数据诊断，针对货盘优化、拉新复购及成本控制，提出以下可落地策略：\n\n### 1. 货盘结构与价格带优化：破解低价带运费痛点\n- **推行凑单免邮与包邮门槛策略**：针对 0-50 的低价带（运费占比 46.91%），严禁单品直接单卖，强制推行“多件凑单包邮”或将运费内化至商品总价中，通过打包组合销售降低用户对显性运费的感知。\n- **剥离物流后的货品/漏发差评治理**：低价带和高价带差评率居高不下（分别达 14.94% 和 15.52%），需重点排查低价商品的“货不对板”及高价商品的“物流破损与漏发”问题。针对履约环节建立前置质检与包材加固标准，压降差评率 2-3 个百分点。\n\n### 2. 首购引流与复购留存策略：聚焦高价值心智品类\n- **双引擎驱动拉新**：加大对 `bed_bath_table` 和 `furniture_decor` 的营销预算倾斜，这两个品类兼具高首购人数（分别为 8824 和 6015）与高复购率（4.47% 和 4.69%），是投资回报率最高的ROI阵地。\n- **激活高拉新低复购品类（如 health_beauty）**：针对 `health_beauty`（首购 8391人，复购仅 2.73%），在首购订单包裹中植入定向品类券（如引导复购家居或配饰类），通过跨品类流转券撬动其流量价值，实现用户生命周期价值（LTV）的最大化。\n\n### 3. 消费金融与支付杠杆撬动\n- **高价带金融分期工具渗透**：针对 200-500 及 500 以上的高价带（GMV 合计占比超 43%），联合支付渠道推出信用卡分期免息或分期立减政策，降低高客单门槛，加速高价位段标品（如 `watches_gifts`）的转化流转效率。"
+    },
+    {
+      "id": "scene_analysis",
+      "tag": "场 · 交易履约",
+      "tag_color": "amber",
+      "short_title": "支付分期撬动、24h峰谷与跨州履约",
+      "question": "从交易场和履约场角度分析：用户首购常用什么支付方式？信用卡分期对客单价撬动有多大？下单高峰时段及跨州物流影响如何？",
+      "route_name": "SCENE_ANALYSIS（场 · 支付分期、时段与跨州履约分析场景）",
+      "guard_badge": "正则溯源 95.8% · Gemini 审计 5/5",
+      "meta_stats": "12个SQLite数仓索引 + Pandas Hash Join < 1秒极速计算",
+      "kpis": [
+        {
+          "label": "1期全款平均AOV",
+          "value": "82.5",
+          "sub": "信用卡1期全款客单价基准",
+          "trend": "neutral"
+        },
+        {
+          "label": "7-10期平均AOV",
+          "value": "300.4",
+          "sub": "相对1期撬动 3.6 倍客单价",
+          "trend": "up"
+        },
+        {
+          "label": "全天最高下单峰时",
+          "value": "16:00",
+          "sub": "单小时占全天 6.71% 订单",
+          "trend": "neutral"
+        },
+        {
+          "label": "信用卡订单占比",
+          "value": "75.5%",
+          "sub": "巴西电商绝对主力交易支付场",
+          "trend": "up"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. 多场景路由网关",
+          "badge": "Zhipu-Flash",
+          "badge_color": "green",
+          "desc": "精准路由至【场 · SCENE_ANALYSIS】分析场景",
+          "log": "[V2.0 Skill Router] 命中分析场景: [SCENE_ANALYSIS]"
+        },
+        {
+          "step": "2. 极速 Hash 算子",
+          "badge": "< 1秒执行",
+          "badge_color": "teal",
+          "desc": "利用12个B-Tree索引 + Pandas Hash Join 避开SQLite慢查询",
+          "log": "分期档位平均客单价:\nig\n1期(全款)     82.5\n2-3期      113.7\n4-6期      157.0\n7-10期     300.4\n10期以上     322.1"
+        },
+        {
+          "step": "3. 24h时段与跨州拆解",
+          "badge": "同州vs跨州",
+          "badge_color": "purple",
+          "desc": "计算全天峰谷与客户/卖家跨州履约成本差",
+          "log": "全天峰值小时: 16:00 (占比 6.71%)\n已完成同州直发与跨州远距离履约的运费/时效/延迟/差评全面对比。"
+        },
+        {
+          "step": "4. Reporter + 异源审计",
+          "badge": "5/5 通过",
+          "badge_color": "blue",
+          "desc": "输出分期营销与分仓建议并通过异源审计",
+          "log": "{\n  \"faithfulness_score\": 5,\n  \"insight_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"报告完全忠实于确定性真值包，各项业务指标、表格数据及NLP聚类/时间峰值均准确无误，无任何幻觉。商业策略建议切中要害，逻辑严密。\",\n  \"regex_grounding_pct\": 95.8\n}"
+        }
+      ],
+      "charts": {
+        "left_title": "信用卡分期期数对平均客单价 (AOV) 撬动效应",
+        "left_type": "bar_generic",
+        "left_unit": "",
+        "bar_data": [
+          {
+            "name": "1期(全款)",
+            "value": 82.5,
+            "color": "#94A3B8"
+          },
+          {
+            "name": "2-3期",
+            "value": 113.7,
+            "color": "#60A5FA"
+          },
+          {
+            "name": "4-6期",
+            "value": 157.0,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "7-10期",
+            "value": 300.4,
+            "color": "#7C3AED"
+          },
+          {
+            "name": "10期以上",
+            "value": 322.1,
+            "color": "#EC4899"
+          }
+        ],
+        "right_title": "24小时消费时段下单占比分布 (%) · 峰值 16:00",
+        "right_type": "line",
+        "right_unit": "%",
+        "line_data": [
+          {
+            "name": "0点",
+            "value": 2.41
+          },
+          {
+            "name": "1点",
+            "value": 1.17
+          },
+          {
+            "name": "2点",
+            "value": 0.51
+          },
+          {
+            "name": "3点",
+            "value": 0.27
+          },
+          {
+            "name": "4点",
+            "value": 0.21
+          },
+          {
+            "name": "5点",
+            "value": 0.19
+          },
+          {
+            "name": "6点",
+            "value": 0.5
+          },
+          {
+            "name": "7点",
+            "value": 1.24
+          },
+          {
+            "name": "8点",
+            "value": 3.01
+          },
+          {
+            "name": "9点",
+            "value": 4.82
+          },
+          {
+            "name": "10点",
+            "value": 6.2
+          },
+          {
+            "name": "11点",
+            "value": 6.62
+          },
+          {
+            "name": "12点",
+            "value": 6.01
+          },
+          {
+            "name": "13点",
+            "value": 6.54
+          },
+          {
+            "name": "14点",
+            "value": 6.62
+          },
+          {
+            "name": "15点",
+            "value": 6.48
+          },
+          {
+            "name": "16点",
+            "value": 6.71
+          },
+          {
+            "name": "17点",
+            "value": 6.18
+          },
+          {
+            "name": "18点",
+            "value": 5.79
+          },
+          {
+            "name": "19点",
+            "value": 6.01
+          },
+          {
+            "name": "20点",
+            "value": 6.23
+          },
+          {
+            "name": "21点",
+            "value": 6.26
+          },
+          {
+            "name": "22点",
+            "value": 5.87
+          },
+          {
+            "name": "23点",
+            "value": 4.16
+          }
+        ]
+      },
+      "report_md": "# 电商商业专题报告：基于交易与履约双场的数据洞察与策略指引\n\n**报告日期**：2026-11-23  \n**报告对象**：核心管理层与业务决策团队  \n**主笔人**：资深电商商业分析总监  \n\n---\n\n## 一、 执行摘要 (Executive Summary)\n\n本报告聚焦电商业务的**交易场**与**履约场**核心数据，对用户首购偏好、信用卡分期杠杆效应、时间消费峰值及跨州物流对服务质量的影响进行深度剖析。\n\n关键结论速览：\n1. **交易场支付基调**：信用卡（credit_card）是绝对核心的支付利器，新客首购订单占比高达 75.47%，全盘占比 75.48%。\n2. **金融杠杆撬动效应**：信用卡分期对客单价（AOV）具备极强的拉动作用。其中，7-10期分期档位的平均客单价飙升至 300.43，10期以上档位更是达到 322.07，相比1期（全款）的 82.49 实现了数倍突破。\n3. **时间消费场与流量洪峰**：全天最高峰下单小时为 16:00，Top3 下单时段依次为 16:00、11:00、14:00；工作日订单显著高于周末。\n4. **履约场结构性痛点**：跨州履约订单占比高达 64.16%，其平均运费（26.94）、运费占GMV比（18.3%）、平均送达天数（15.13天）、履约延迟率（9.25%）及差评率（14.24%）均全面劣于同州履约，成为吞噬利润与损害用户体验的主要瓶颈。\n\n---\n\n## 二、 交易场分析：用户首购支付偏好与信用卡分期撬动\n\n### 2.1 用户首购与全盘支付方式对比\n从支付交易场来看，新客获取与存量运营的支付结构高度一致，呈现出极高的信用卡集中度。\n\n| 支付方式    |   全盘订单数 |   全盘订单占比(%) |   首购订单占比(%) |   平均客单价 |\n|:------------|-------------:|------------------:|------------------:|-------------:|\n| credit_card |        72825 |             75.48 |             75.47 |       143.24 |\n| boleto      |        19191 |             19.89 |             19.95 |       121.4  |\n| voucher     |         2977 |              3.09 |              3.04 |        94.8  |\n| debit_card  |         1484 |              1.54 |              1.54 |       119.86 |\n\n*洞察*：信用卡（credit_card）不仅是全盘用户（75.48%）的主流选择，更是新客首购（75.47%）的绝对主力，其平均客单价达 143.24，显著高于 boleto（121.4）和 voucher（94.8）。这表明平台核心消费群体具备成熟的信用卡支付习惯，高客单价货盘具备良好的支付基础。\n\n### 2.2 信用卡分期对客单价（AOV）的撬动深度分析\n深入解构信用卡用户的分期行为，金融工具对客单价的撬动成效极为显著：\n\n| 分期档位   |   订单数 |   占信用卡订单(%) |   占信用卡GMV(%) |   平均客单价 |\n|:-----------|---------:|------------------:|-----------------:|-------------:|\n| 1期(全款)  |    23359 |             32.08 |            18.47 |        82.49 |\n| 2-3期      |    22021 |             30.24 |            24    |       113.7  |\n| 4-6期      |    15694 |             21.55 |            23.62 |       156.99 |\n| 7-10期     |    11420 |             15.68 |            32.89 |       300.43 |\n| 10期以上   |      329 |              0.45 |             1.02 |       322.07 |\n\n*核心见解*：\n- **阶梯式撬动**：随着分期期数的增加，客单价呈现近乎线性的爆发式增长。1期全款客单价为 82.49，而 4-6 期档位提升至 156.99，7-10 期档位更是跃升至 300.43，10期以上则高达 322.07。\n- **高期数贡献高GMV**：虽然 7-10 期订单数仅占信用卡订单的 15.68%，但其贡献的GMV占比高达 32.89%，成为拉动平台整体大盘GMV的核心驱动力。\n\n---\n\n## 三、 时间消费场：下单高峰时段与周度分布\n\n### 3.1 日内高峰时段洞察\n- **全天最高峰下单小时**：16:00\n- **下单高峰 Top3 时段**：16:00、11:00、14:00\n\n*商业解读*：16:00 作为全天最高峰，叠加 11:00（午间）和 14:00（午后开工时段），表明用户的下单行为高度集中在白天的职场和日常活跃时间段。平台应在这些关键时段前置营销推送、秒杀活动及客服运力配置。\n\n### 3.2 周度订单分布\n\n| 星期   |   有效订单数 |   订单占比(%) |\n|:-------|-------------:|--------------:|\n| 周一   |        15701 |         16.27 |\n| 周二   |        15503 |         16.07 |\n| 周三   |        15076 |         15.63 |\n| 周四   |        14323 |         14.85 |\n| 周五   |        13685 |         14.18 |\n| 周六   |        10555 |         10.94 |\n| 周日   |        11635 |         12.06 |\n\n*商业解读*：订单量在周一至周三达到峰值（均保持在 15% 以上占比），随后从周五开始下滑，周六触底（10.94%）。流量呈现典型的“工作日高、周末低”的B2C特征。\n\n---\n\n## 四、 履约场分析：跨州物流影响与供应链痛点\n\n对照同州直发与跨州远距离履约的数据表现：\n\n| 履约场类型         |   订单数 |   订单占比(%) |   平均运费 |   运费占GMV比(%) |   平均送达天数 |   履约延迟率(%) |   差评率(%) |\n|:-------------------|---------:|--------------:|-----------:|-----------------:|---------------:|----------------:|------------:|\n| 同州履约(近距直发) |    34575 |         35.84 |      15.35 |            12.92 |           7.95 |            6.08 |       10.36 |\n| 跨州履约(长距跨区) |    61895 |         64.16 |      26.94 |            18.3  |          15.13 |            9.25 |       14.24 |\n\n*痛点剖析*：\n1. **沉重的运费与成本负担**：跨州履约占比高达 64.16%，其平均运费高达 26.94，运费占GMV比达到 18.3%，显著高于同州履约的 12.92%，严重挤压了商品的利润空间。\n2. **时效恶化引发信任危机**：跨州履约的平均送达天数长达 15.13 天（同州仅为 7.95 天），直接导致履约延迟率攀升至 9.25%，并推高差评率至 14.24%（同州为 10.36%）。物流履约的时效延迟是导致用户满意度下降的核心诱因。\n\n---\n\n## 五、 可落地商业策略建议\n\n针对上述数据洞察，提出以下四项精准落地策略：\n\n### 策略一：强化信用卡首购引导与免息分期权益绑定（针对支付交易场）\n- **行动方案**：针对首购用户（占比 75.47% 的 credit_card 潜在客群），在商品详情页和支付结算页前置展示分期提示。联合银行资源，对 4-6 期及 7-10 期（客单价已分别达到 156.99 和 300.43 的高价值档位）推出阶梯式免息或贴息补贴。\n- **预期目标**：通过金融杠杆刺激首购用户下单更高客单价的商品，进一步提升客盘GMV结构。\n\n### 策略二：流量与营销时段的“错峰精细化运营”（针对时间消费场）\n- **行动方案**：锁定 16:00 全天最高峰及 11:00、14:00 的次高峰时段，提前 1 小时启动站内PUSH、限时折扣与直播加码。针对周六日订单下滑（周六仅占 10.94%）的现象，在周末推出“周末宅家购”专场，平衡全周的履约与仓储压力。\n\n### 策略三：治理货盘“低价高运费”与跨州物流成本（针对履约痛点）\n- **行动方案**：针对跨州运费占GMV比高达 18.3% 的痛点，推行“核心货盘仓网前置”策略。将高频标品下沉至跨州核心流向的区域仓（Regional Hub），减少长途干线运输成本。对于低客单价商品，严格限制跨州远距离配送，通过满额包邮或运费补贴引导用户拼单，优化运费结构。\n\n### 策略四：剥离物流后的核心货品与漏发差评治理（针对客户体验）\n- **行动方案**：针对跨州履约高达 14.24% 的差评率与 15.13 天的漫长周期，必须进行精细化拆解：\n  1. **延迟溯源**：重点治理跨州运输中的中转仓滞留问题，对延迟率超过 9.25% 的承运商实行末位淘汰。\n  2. **货品与漏发治理**：针对长途运输中易发损毁、漏发的货品建立出库双重扫码校验机制，从源头降低因物流导致的客诉和差评。"
+    },
+    {
+      "id": "review_insight",
+      "tag": "跨模态 · 评论NLP",
+      "tag_color": "rose",
+      "short_title": "剥离物流后的商品差评与原声挖掘",
+      "question": "排查一下各品类的商品评价与差评黑榜，剔除物流延迟因素后，看看用户对商品本身到底在吐槽什么？",
+      "route_name": "REVIEW_INSIGHT（跨模态 · 定量物流剥离 + 葡萄牙语NLP原声聚类）",
+      "guard_badge": "正则溯源 100.0% · Gemini 审计 5/5",
+      "meta_stats": "全盘差评 12,311 笔 · 抽样 30 条葡萄牙语原声由 Qwen35B 翻译聚类",
+      "kpis": [
+        {
+          "label": "全盘差评总单量",
+          "value": "12,311",
+          "sub": "占参评订单 12.85%",
+          "trend": "down"
+        },
+        {
+          "label": "按时送达纯货品差评",
+          "value": "66.3%",
+          "sub": "剥离物流锅后的真实商品/服务痛点",
+          "trend": "down"
+        },
+        {
+          "label": "物流延迟伴生差评",
+          "value": "33.7%",
+          "sub": "履约超时直接引发的负面口碑",
+          "trend": "neutral"
+        },
+        {
+          "label": "纯商品差评黑榜第1",
+          "value": "office_furniture",
+          "sub": "按时送达仍达 18.73% 差评率",
+          "trend": "down"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. 多场景路由网关",
+          "badge": "Zhipu-Flash",
+          "badge_color": "green",
+          "desc": "精准路由至【跨模态 · REVIEW_INSIGHT】分析场景",
+          "log": "[V2.0 Skill Router] 命中分析场景: [REVIEW_INSIGHT]"
+        },
+        {
+          "step": "2. 物流干扰剥离算子",
+          "badge": "定量归因",
+          "badge_color": "teal",
+          "desc": "拆分履约延迟差评 vs 按时送达纯商品差评",
+          "log": "| cat                   |    n |   tot_bad |   pure_bad |\n|:----------------------|-----:|----------:|-----------:|\n| office_furniture      | 1244 |     22.11 |      18.73 |\n| unknown               | 1402 |     17.62 |      13.55 |\n| bed_bath_table        | 9177 |     16.17 |      12.39 |\n| furniture_decor       | 6260 |     15.51 |      11.93 |\n| computers_accessories | 6499 |     14.63 |      11.42 |\n| telephony             | 4069 |     14.13 |      10.98 |"
+        },
+        {
+          "step": "3. Review Mining NLP",
+          "badge": "Qwen35B",
+          "badge_color": "purple",
+          "desc": "抽样 30 条真实葡萄牙语差评自动翻译 + 痛点主题聚类",
+          "log": "[Review Mining Agent | Qwen3.5-35B]\n已从按时送达却打 1-2 分的黑榜 Top 3 品类抽样 30 条真实葡萄牙语评论完成翻译与痛点聚类（覆盖漏发少件、货不对板、质量残次等核心痛点）。"
+        },
+        {
+          "step": "4. Reporter + 异源审计",
+          "badge": "5/5 通过",
+          "badge_color": "blue",
+          "desc": "形成“定量黑榜+定性双语原声”证据链报告",
+          "log": "{\n  \"faithfulness_score\": 5,\n  \"insight_score\": 5,\n  \"hallucination_detected\": false,\n  \"audit_comment\": \"待审计报告完全忠实于确定性真值包中的所有定量数据、NLP聚类比例以及双语原声案例，未发现任何捏造或篡改，商业洞察与落地建议切中要害，逻辑严密。\",\n  \"regex_grounding_pct\": 100.0\n}"
+        }
+      ],
+      "charts": {
+        "left_title": "黑榜核心品类：总差评率 vs 剥离物流后纯商品差评率 (%)",
+        "left_type": "grouped_bar",
+        "left_unit": "%",
+        "categories": [
+          "office_furniture",
+          "unknown",
+          "bed_bath_table",
+          "furniture_decor",
+          "computers_accessories",
+          "telephony"
+        ],
+        "series": [
+          {
+            "name": "总差评率(%)",
+            "color": "#FDA4AF",
+            "data": [
+              22.11,
+              17.62,
+              16.17,
+              15.51,
+              14.63,
+              14.13
+            ]
+          },
+          {
+            "name": "按时送达纯商品差评率(%)",
+            "color": "#E11D48",
+            "data": [
+              18.73,
+              13.55,
+              12.39,
+              11.93,
+              11.42,
+              10.98
+            ]
+          }
+        ],
+        "right_title": "全盘差评根因剥离结构 (%)",
+        "right_type": "hbar",
+        "right_unit": "%",
+        "hbar_data": [
+          {
+            "name": "物流延迟伴生差评",
+            "value": 33.7,
+            "color": "#F59E0B"
+          },
+          {
+            "name": "按时送达·纯商品/服务差评",
+            "value": 66.3,
+            "color": "#E11D48"
+          }
+        ]
+      },
+      "report_md": "# 剥离物流噪声后的用户真实吐槽：各品类商品差评黑榜与体验痛点深度剖析报告\n\n**报告日期**：2026-11-23  \n**报告对象**：电商商业分析总监、品类运营与供应链管理团队  \n\n---\n\n### 一、 全盘差评剥离总览：撕掉物流“遮羞布”，直面商品与服务本质\n\n在全盘电商数据中，物流往往成为客诉的“背锅侠”。然而，通过对全盘 95832 单有效参评订单的深度剥离与清洗，我们发现真实情况远比单纯的物流延误更为严峻。\n\n全盘总差评订单数(1-2分)为 12311 单，全盘总差评率(%)达到 12.85。其中，物流延迟伴生差评占比(%)为 33.68，而按时送达纯商品/服务差评占比(%)高达 66.32。这表明，**超过三分之二的差评与物流延误无关，纯粹指向商品本身的质量、货品交付完整度及履约服务缺陷**。\n\n### 二、 核心大类纯商品质量差评黑榜 Top 8 深度排查\n\n为了精准锁定问题重灾区，我们对参评订单数在 1000 单以上的心智大类进行了剥离分析。以下是按“按时送达纯商品差评率”排序的 Top 8 黑榜：\n\n| 英文品类 | 参评订单数 | 总差评率(%) | 履约延迟率(%) | 按时送达纯商品差评率(%) |\n| :--- | :---: | :---: | :---: | :---: |\n| office_furniture | 1244 | 22.11 | 9 | 18.73 |\n| unknown | 1402 | 17.62 | 8.92 | 13.55 |\n| bed_bath_table | 9177 | 16.17 | 8.59 | 12.39 |\n| furniture_decor | 6260 | 15.51 | 8.4 | 11.93 |\n| computers_accessories | 6499 | 14.63 | 7.59 | 11.42 |\n| telephony | 4069 | 14.13 | 8.48 | 10.98 |\n| watches_gifts | 5454 | 13.71 | 8.36 | 9.78 |\n| baby | 2787 | 14.28 | 9.01 | 9.74 |\n\n**数据洞察分析**：\n1. **`office_furniture`（办公家具）高居黑榜之首**：其纯商品差评率高达 18.73%，总差评率突破 22.11%，是平台当前体验崩塌最严重的品类。\n2. **`bed_bath_table`（家纺家居）基数庞大且隐患深重**：参评订单高达 9177 单，纯商品差评率达 12.39%，绝对差评规模全平台领先。\n3. **`unknown`（未知/未分类商品）表现异常**：在 1402 单中产生 13.55% 的纯商品差评率，暴露出平台底层类目归属不清、商品信息缺失的严重治理漏洞。\n\n### 三、 跨模态 NLP 深度挖掘：剥离物流后，用户到底在吐槽什么？\n\n通过对黑榜品类抽样的 30 条真实差评进行 NLP 语义解析，我们发现：尽管物流显示“按时送达”，但用户在开箱和售后环节遭遇了严重的体验灾难。\n\n#### 1. 痛点主题分类统计\n\n| 痛点主题标签 | 样本条数 | 占比 (%) |\n| :--- | :---: | :---: |\n| 漏发少件 / 只收到部分 | 10 | 33.33% |\n| 未收到货却显示已签收 / 虚假妥投 | 7 | 23.33% |\n| 货不对板 / 颜色尺寸图文不符 | 6 | 20.00% |\n| 商品质量差 / 破损残次 | 5 | 16.67% |\n| 售后沟通与退换难 | 2 | 6.67% |\n| **合计** | **30** | **100.00%** |\n\n#### 2. 葡萄牙语真实原声与场景还原\n* **漏发少件（占比 33.33%）**：如 `bed_bath_table` 品类中，用户反馈购买 5 条超细纤维毯子仅收到 3 条（Comprei 5 cobertores de microfibra, no qual recebi apenas 3...），暴露出仓储分拣与打包环节的严重漏件率。\n* **虚假妥投（占比 23.33%）**：如 `office_furniture` 品类中，用户反映未收到货也无任何通知却显示签收（Não recebi o produto é nem um telefonema...），反映出末端配送存在严重的虚假签收与最后一公里欺诈。\n* **货不对板（占比 20.00%）**：如家纺类商品颜色描述与实物严重不符（A cor não veio vermelho... e sim vinho...），打击了消费者的预期。\n* **破损残次（占比 16.67%）**：如 `unknown` 品类中，虽然按时送达但由于包装防护不当导致产品彻底碎裂（chegou todo quebrado... por causa do acondicionamento）。\n\n---\n\n### 四、 商业策略与落地建议\n\n基于上述数据铁律与深度归因，为扭转高差评率，特提出以下针对性的可落地业务策略：\n\n1. **针对 `office_furniture` 与大件商品的“防破损与虚假妥投”专项治理**：\n   * **优化仓储打包标准**：针对办公家具及易碎品，强制推行缓冲包装升级，压降因“acondicionamento”（包装防护不当）导致的破损残次率。\n   * **末端配送强生管**：针对虚假妥投高发区，引入末端配送GPS轨迹核验与“签收必须拍照/验证码”机制，彻底治理未收货却显示签收的顽疾。\n\n2. **针对 `bed_bath_table` 及多件套品类的“仓储出库防漏”稽核**：\n   * 针对占比高达 33.33% 的“漏发少件”问题，在仓储打包环节引入 AI 视觉称重与多件商品扫码复核机制。发货前系统自动比对订单明细与打包重量，从源头杜绝少发、漏发导致的 1-2 分差评。\n\n3. **针对图文不符与货不对板的商品信息准入治理**：\n   * 针对色彩、尺寸图文不符（如把酒红色当红色描述）的客诉，收紧商详页的图文标准审核。要求商家提供标准化色卡和实物细节图，降低买家心理预期落差。\n\n4. **建立“剥离物流后”的商家红黑榜与考核机制**：\n   * 运营团队在考核店铺时，必须将“按时送达纯商品差评率”（如 `office_furniture` 的 18.73% 和 `unknown` 的 13.55%）作为核心质量指标（DSR质量分），对长期因货品质量、漏发、货不对板违规的商家实行流量降权或清退。"
+    },
+    {
+      "id": "out_of_scope_eval",
+      "tag": "边界护栏 · 评测",
+      "tag_color": "sky",
+      "short_title": "超纲拒答与 V2.0 双轨评测总览",
+      "question": "分析一下平台新客主要是通过抖音、微信还是搜索引擎渠道产生首购的？",
+      "route_name": "OUT_OF_SCOPE（诚实数据边界拦截 · 绝不编造不存在的渠道字段）",
+      "guard_badge": "SQL 15题 100% · 路由 10题 100%",
+      "meta_stats": "Zhipu-Flash 毫秒级拒答 · 0 SQL 算力浪费 · 跨厂商调用 0 失败",
+      "kpis": [
+        {
+          "label": "15题SQL评测准确率",
+          "value": "100.0%",
+          "sub": "公平基线 33.3% → V1.0 86.7% → V2.0 100%",
+          "trend": "up"
+        },
+        {
+          "label": "10类场景路由准确率",
+          "value": "100.0%",
+          "sub": "含超纲拒答 / 模糊澄清 / AST自由探索",
+          "trend": "up"
+        },
+        {
+          "label": "异构调用稳定性",
+          "value": "0 失败",
+          "sub": "7通道短超时熔断 + 429分级冷却",
+          "trend": "up"
+        },
+        {
+          "label": "本次超纲SQL触发",
+          "value": "0 次",
+          "sub": "识别缺失投放渠道字段，直接引导替代",
+          "trend": "up"
+        }
+      ],
+      "nodes": [
+        {
+          "step": "1. 数据边界扫描",
+          "badge": "OUT_OF_SCOPE",
+          "badge_color": "green",
+          "desc": "识别到“抖音/微信/搜索渠道”不在 Olist 8表字段内",
+          "log": "[V2.0 Skill Router | Zhipu-GLM4-Flash]\n命中分析场景: [OUT_OF_SCOPE]\n拦截原因: 数仓明确缺失外部广告投放与流量拉新渠道字段。"
+        },
+        {
+          "step": "2. 下游执行熔断",
+          "badge": "0 SQL 消耗",
+          "badge_color": "gray",
+          "desc": "阻止下游瞎编 channel 字段导致报错或幻觉",
+          "log": "[System] 已熔断 SQL 与 Python 沙盒，直接返回诚实边界提示与可替代分析场景推荐。"
+        },
+        {
+          "step": "3. 多轮记忆与自由探索",
+          "badge": "MemorySaver",
+          "badge_color": "purple",
+          "desc": "支持 AST 安全动态沙盒与跨轮指代追问下钻",
+          "log": "[V2.0 Capability] 已完成 AST 白名单动态 Python 沙盒实测（商品图片数/描述长度相关性）与两轮跨场景下钻实测。"
+        },
+        {
+          "step": "4. 双轨量化评测",
+          "badge": "双 100% 达标",
+          "badge_color": "blue",
+          "desc": "SQL 15题 100% + 分析场景路由 10题 100%",
+          "log": "[Benchmark Summary]\n- 15-Q Stratified SQL: Baseline 33.3% -> V1.0 86.7% -> V2.0 100.0%\n- 10-Scene Routing Eval: 10/10 (100.0%)"
+        }
+      ],
+      "charts": {
+        "left_title": "V1.0 → V2.0 双轨量化评测准确率跃升 (%)",
+        "left_type": "bar_generic",
+        "left_unit": "%",
+        "bar_data": [
+          {
+            "name": "公平Baseline\n(无口径RAG)",
+            "value": 33.3,
+            "color": "#94A3B8"
+          },
+          {
+            "name": "V1.0 Agent\n(平权轮询)",
+            "value": 86.7,
+            "color": "#60A5FA"
+          },
+          {
+            "name": "V1.5/V2.0\n15题SQL评测",
+            "value": 100.0,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "V2.0 10类\n分析场景路由",
+            "value": 100.0,
+            "color": "#10B981"
+          }
+        ],
+        "right_title": "跨厂商异构多模型 FinOps 实际成功调用次数",
+        "right_type": "hbar",
+        "right_unit": "次",
+        "hbar_data": [
+          {
+            "name": "ModelScope-Qwen3.5-35B",
+            "value": 1,
+            "color": "#4F46E5"
+          },
+          {
+            "name": "Google-Gemini-3.5-Flash",
+            "value": 17,
+            "color": "#F59E0B"
+          },
+          {
+            "name": "Zhipu-GLM4-Flash",
+            "value": 1,
+            "color": "#10B981"
+          }
+        ]
+      },
+      "report_md": "**数据边界提示（无法编造缺失字段）**：\n\n很抱歉，当前 Olist 电商数仓中暂无广告投放或流量拉新渠道（如抖音、微信、搜索引擎、UTM等）的相关数据。不过，我们可以从现有的【人/货/场】维度为您提供高价值的替代分析视角，推荐您尝试：1. 【场】首购用户的支付方式与分期偏好分析；2. 【货】新客首购最青睐的品类分布；3. 【场】新客来源的地域（省份/城市）分布特征。请问您对哪一个替代方向感兴趣？"
     }
   ]
 };
