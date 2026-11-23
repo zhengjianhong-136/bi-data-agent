@@ -94,7 +94,29 @@ function selectScenario(idx) {
   selectNode(0);
   renderKpis(sc.kpis);
   renderCharts(sc.charts);
-  document.getElementById("report-content").innerHTML = marked.parse((sc.report_md || "").replace(/R\$/g, ""));
+
+  // 渲染 Markdown 并自动美化全部表格（圆角滚动容器 + 纯数字列自动右对齐）
+  const reportEl = document.getElementById("report-content");
+  reportEl.innerHTML = marked.parse((sc.report_md || "").replace(/R\$/g, ""));
+  reportEl.querySelectorAll("table").forEach(tbl => {
+    const wrap = document.createElement("div");
+    wrap.className = "md-table-wrap";
+    tbl.parentNode.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+
+    const rows = tbl.querySelectorAll("tbody tr");
+    if (!rows.length) return;
+    const colCount = rows[0].children.length;
+    for (let c = 0; c < colCount; c++) {
+      const cells = Array.from(rows).map(r => r.children[c]).filter(Boolean);
+      const isNum = cells.every(td => /^[\+\-]?\d[\d,\.\s%pp天次人单]*$/.test(td.textContent.trim()));
+      if (isNum) {
+        const th = tbl.querySelectorAll("thead th")[c];
+        if (th) th.style.textAlign = "right";
+        cells.forEach(td => td.classList.add("num-cell"));
+      }
+    }
+  });
 }
 
 function renderNodes(nodes, replayingIdx) {
@@ -143,18 +165,34 @@ function renderCharts(charts) {
   const lUnit = charts.left_unit || "";
   const rUnit = charts.right_unit || "";
 
-  // --- 左图渲染 ---
+  // --- 左图渲染（支持正负双向柱图与分组多柱图） ---
   if (charts.left_type === "bar_generic") {
     const list = charts.bar_data;
+    const vals = list.map(i => i.value);
+    const hasNeg = vals.some(v => v < 0);
+    const maxAbs = Math.max(...vals.map(v => Math.abs(v)), 1);
     leftChartInst.setOption({
-      tooltip: { trigger: "axis", formatter: p => `${p[0].name.replace(/\n/g, " ")}<br/><b>${p[0].value}${lUnit}</b>` },
-      grid: { left: 48, right: 20, top: 32, bottom: 36 },
+      tooltip: { trigger: "axis", formatter: p => `${p[0].name.replace(/\n/g, " ")}<br/><b>${p[0].value.toLocaleString()}${lUnit}</b>` },
+      grid: { left: 56, right: 20, top: 34, bottom: 38 },
       xAxis: { type: "category", data: list.map(i => i.name), axisLabel: { color: "#475569", fontSize: 10.5, interval: 0 } },
-      yAxis: { type: "value", splitLine: { lineStyle: { type: "dashed", color: "#E2E8F0" } }, axisLabel: { formatter: `{value}${lUnit}`, color: "#64748B", fontSize: 10.5 } },
+      yAxis: {
+        type: "value",
+        min: hasNeg ? Math.floor(Math.min(...vals) * 1.25) : 0,
+        max: Math.ceil(Math.max(...vals, 0) * 1.22),
+        splitLine: { lineStyle: { type: "dashed", color: "#E2E8F0" } },
+        axisLabel: { color: "#64748B", fontSize: 10.5, formatter: v => (Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + "k" : v) + lUnit }
+      },
       series: [{
         type: "bar", barWidth: "46%",
-        label: { show: true, position: "top", fontSize: 10.5, fontWeight: 600, color: "#334155", formatter: `{c}${lUnit}` },
-        data: list.map(i => ({ value: i.value, itemStyle: { color: i.color || "#4F46E5", borderRadius: [6, 6, 0, 0] } }))
+        data: list.map(i => {
+          const isNeg = i.value < 0;
+          const lbl = Math.abs(i.value) >= 10000 ? `${i.value > 0 && hasNeg ? "+" : ""}${(i.value / 1000).toFixed(1)}k` : `${i.value > 0 && hasNeg ? "+" : ""}${i.value}${lUnit}`;
+          return {
+            value: i.value,
+            itemStyle: { color: i.color || (isNeg ? "#F43F5E" : "#4F46E5"), borderRadius: isNeg ? [0, 0, 6, 6] : [6, 6, 0, 0] },
+            label: { show: true, position: isNeg ? "bottom" : "top", fontSize: 10.5, fontWeight: 600, color: "#334155", formatter: () => lbl }
+          };
+        })
       }]
     }, true);
   } else if (charts.left_type === "grouped_bar") {
@@ -173,22 +211,34 @@ function renderCharts(charts) {
     }, true);
   }
 
-  // --- 右图渲染 ---
+  // --- 右图渲染（支持正负双向横向条形图，零遮挡留白） ---
   if (charts.right_type === "hbar") {
     const list = charts.hbar_data;
-    const maxV = Math.max(...list.map(i => i.value), 1);
+    const vals = list.map(i => i.value);
+    const maxV = Math.max(...vals, 0);
+    const minV = Math.min(...vals, 0);
+    const xMin = minV < 0 ? Math.floor(minV * 1.38) : 0;
+    const xMax = maxV > 0 ? Math.ceil(maxV * 1.28) : 0;
     rightChartInst.setOption({
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: p => `${p[0].name}<br/><b>${p[0].value}${rUnit}</b>` },
-      grid: { left: 135, right: 52, top: 16, bottom: 24 },
-      xAxis: { type: "value", max: Math.ceil(maxV * 1.25), splitLine: { lineStyle: { type: "dashed", color: "#E2E8F0" } }, axisLabel: { formatter: `{value}${rUnit}`, color: "#64748B", fontSize: 10.5 } },
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: p => `${p[0].name}<br/><b>${p[0].value.toLocaleString()}${rUnit}</b>` },
+      grid: { left: 135, right: 56, top: 16, bottom: 24 },
+      xAxis: {
+        type: "value", min: xMin, max: xMax,
+        splitLine: { lineStyle: { type: "dashed", color: "#E2E8F0" } },
+        axisLabel: { color: "#64748B", fontSize: 10.5, formatter: v => (Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + "k" : v) + rUnit }
+      },
       yAxis: { type: "category", data: list.map(i => i.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "#334155", fontWeight: 600, fontSize: 10.5 } },
       series: [{
         type: "bar", barWidth: "52%",
-        data: list.map(i => ({
-          value: i.value,
-          itemStyle: { color: i.color || "#4F46E5", borderRadius: [0, 5, 5, 0] },
-          label: { show: true, position: "right", fontSize: 10.5, fontWeight: 600, color: "#334155", formatter: `{c}${rUnit}` }
-        }))
+        data: list.map(i => {
+          const isNeg = i.value < 0;
+          const lbl = Math.abs(i.value) >= 10000 ? `${i.value > 0 && minV < 0 ? "+" : ""}${(i.value / 1000).toFixed(1)}k` : `${i.value > 0 && minV < 0 ? "+" : ""}${i.value}${rUnit}`;
+          return {
+            value: i.value,
+            itemStyle: { color: i.color || (isNeg ? "#F43F5E" : "#4F46E5"), borderRadius: isNeg ? [5, 0, 0, 5] : [0, 5, 5, 0] },
+            label: { show: true, position: isNeg ? "left" : "right", fontSize: 10.5, fontWeight: 600, color: "#334155", formatter: () => lbl }
+          };
+        })
       }]
     }, true);
   } else if (charts.right_type === "line") {
